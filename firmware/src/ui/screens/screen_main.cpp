@@ -7,11 +7,14 @@
  * Author: Claude Code | Date: 2026-04-13
  */
 #include "screen_main.h"
+#include "screen_minigame.h"
 #include "../sprite_engine.h"
 #include "../theme.h"
 #include "../speech_bubble.h"
+#include "../ui_manager.h"
 #include "../../hal/light.h"
 #include "../../hal/audio.h"
+#include "../../pet/minigames.h"
 #include "lvgl.h"
 
 // ---- Layout ----
@@ -52,6 +55,136 @@ static bool    is_night      = false;
 static lv_color_t day_bg   = lv_color_make(0, 0, 0);       // black
 static lv_color_t night_bg = lv_color_make(2, 5, 15);      // very dark blue
 
+// ---- Game selection popup ----
+static lv_obj_t* game_popup      = nullptr;
+static lv_obj_t* game_popup_bg   = nullptr; // dimming overlay
+static bool game_popup_visible   = false;
+
+static void close_game_popup() {
+    if (game_popup) lv_obj_add_flag(game_popup, LV_OBJ_FLAG_HIDDEN);
+    if (game_popup_bg) lv_obj_add_flag(game_popup_bg, LV_OBJ_FLAG_HIDDEN);
+    game_popup_visible = false;
+}
+
+static void game_popup_bg_cb(lv_event_t* e) {
+    (void)e;
+    close_game_popup();
+}
+
+static void game_btn_echo_cb(lv_event_t* e) {
+    (void)e;
+    close_game_popup();
+    UI::Manager::showScreen(UI::Manager::Screen::MINIGAME);
+    UI::ScreenMiniGame::show(Pet::MiniGames::GameType::ECHO_MEMORY);
+}
+
+static void game_btn_clean_cb(lv_event_t* e) {
+    (void)e;
+    close_game_popup();
+    UI::Manager::showScreen(UI::Manager::Screen::MINIGAME);
+    UI::ScreenMiniGame::show(Pet::MiniGames::GameType::LIGHT_CLEANSING);
+}
+
+static void game_btn_star_cb(lv_event_t* e) {
+    (void)e;
+    close_game_popup();
+    UI::Manager::showScreen(UI::Manager::Screen::MINIGAME);
+    UI::ScreenMiniGame::show(Pet::MiniGames::GameType::STAR_JOY);
+}
+
+static void show_game_popup() {
+    if (!game_popup) return;
+    lv_obj_remove_flag(game_popup_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(game_popup, LV_OBJ_FLAG_HIDDEN);
+    game_popup_visible = true;
+}
+
+static void create_game_popup(lv_obj_t* parent) {
+    // Semi-transparent overlay
+    game_popup_bg = lv_obj_create(parent);
+    lv_obj_remove_style_all(game_popup_bg);
+    lv_obj_set_size(game_popup_bg, 800, 480);
+    lv_obj_set_pos(game_popup_bg, 0, 0);
+    lv_obj_set_style_bg_color(game_popup_bg, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(game_popup_bg, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_add_flag(game_popup_bg, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(game_popup_bg, game_popup_bg_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_flag(game_popup_bg, LV_OBJ_FLAG_HIDDEN);
+
+    // Popup card
+    game_popup = lv_obj_create(parent);
+    lv_obj_set_size(game_popup, 380, 300);
+    lv_obj_center(game_popup);
+    lv_obj_set_style_bg_color(game_popup, lv_color_make(8, 16, 28), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(game_popup, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(game_popup, lv_color_make(212, 165, 52), LV_PART_MAIN);
+    lv_obj_set_style_border_width(game_popup, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(game_popup, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_radius(game_popup, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(game_popup, 16, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(game_popup, 12, LV_PART_MAIN);
+    lv_obj_set_flex_flow(game_popup, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(game_popup, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(game_popup, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Title
+    lv_obj_t* popup_title = lv_label_create(game_popup);
+    lv_label_set_text(popup_title, "Rituali di legame");
+    lv_obj_set_style_text_color(popup_title,
+        lv_color_make(212, 165, 52), LV_PART_MAIN);
+    lv_obj_set_style_text_font(popup_title,
+        &lv_font_montserrat_18, LV_PART_MAIN);
+
+    // Game buttons: name + subtitle
+    struct GameEntry {
+        const char* name;
+        const char* subtitle;
+        lv_event_cb_t cb;
+    };
+    static const GameEntry entries[3] = {
+        { "Thish\xc3\xad-R\xc3\xa8vosh",   "Eco della Memoria",    game_btn_echo_cb  },
+        { "Misk\xc3\xa1-V\xc3\xbfthi",      "Pulizia di Luce",     game_btn_clean_cb },
+        { "S\xc3\xa8lath-Nashi",             "Gioia delle Stelle",  game_btn_star_cb  },
+    };
+
+    for (uint8_t i = 0; i < 3; i++) {
+        lv_obj_t* btn = lv_button_create(game_popup);
+        lv_obj_set_size(btn, 340, 60);
+        lv_obj_set_style_bg_color(btn, lv_color_make(12, 30, 50), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(btn,
+            lv_color_make(62, 207, 207), LV_PART_MAIN);
+        lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(btn, LV_OPA_40, LV_PART_MAIN);
+        lv_obj_set_style_radius(btn, 10, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(btn,
+            lv_color_make(212, 165, 52), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_70, LV_STATE_PRESSED);
+        lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        lv_obj_t* name_lbl = lv_label_create(btn);
+        lv_label_set_text(name_lbl, entries[i].name);
+        lv_obj_set_style_text_color(name_lbl,
+            lv_color_make(240, 230, 211), LV_PART_MAIN);
+        lv_obj_set_style_text_font(name_lbl,
+            &lv_font_montserrat_16, LV_PART_MAIN);
+
+        lv_obj_t* sub_lbl = lv_label_create(btn);
+        lv_label_set_text(sub_lbl, entries[i].subtitle);
+        lv_obj_set_style_text_color(sub_lbl,
+            lv_color_make(140, 140, 160), LV_PART_MAIN);
+        lv_obj_set_style_text_font(sub_lbl,
+            &lv_font_montserrat_12, LV_PART_MAIN);
+
+        lv_obj_add_event_cb(btn, entries[i].cb, LV_EVENT_CLICKED, nullptr);
+    }
+
+    lv_obj_add_flag(game_popup, LV_OBJ_FLAG_HIDDEN);
+}
+
 // Toolbar button event callback
 static void toolbar_btn_cb(lv_event_t* e) {
     lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
@@ -77,8 +210,8 @@ static void toolbar_btn_cb(lv_event_t* e) {
                 case 2: // Clean
                     UI::SpriteEngine::setAnimation("happy");
                     break;
-                case 3: // Play
-                    UI::SpriteEngine::setAnimation("play");
+                case 3: // Play -- show game selection popup
+                    show_game_popup();
                     break;
                 case 4: // Chat — will be handled by UI manager
                     break;
@@ -175,6 +308,9 @@ void create() {
 
         btn_objs[i] = btn;
     }
+
+    // Game selection popup (must be last to overlay everything)
+    create_game_popup(screen);
 
     Serial.println("[MAIN] Screen created");
 }

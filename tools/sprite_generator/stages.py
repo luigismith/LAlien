@@ -1,6 +1,17 @@
 """
 stages.py - Drawing functions for each Lalien developmental stage.
-Each stage function draws the creature on a 64x64 RGBA canvas.
+Each stage function draws the creature on a 64x64 RGBA canvas at 2x resolution
+then downsamples for anti-aliased pixel art.
+
+Stages:
+  0 - Syrma (Egg): cosmic egg with spiral energy, bioluminescent veins
+  1 - Lali-na (Newborn): tiny helpless blob, huge eyes, translucent core
+  2 - Lali-shi (Infant): growing curiosity, first appendages, eyebrow ridges
+  3 - Lali-ko (Child): personality emerging, 4 appendages, expressive face
+  4 - Lali-ren (Teen): awkward grace, long flowing tentacles, body patterns
+  5 - Lali-vox (Adult): full beauty, all DNA at max, bioluminescent tips
+  6 - Lali-mere (Sage): noble wisdom, desaturated, luminous aura
+  7 - Lali-thishi (Transcendence): ethereal dissolving form
 """
 
 import math
@@ -8,17 +19,30 @@ from PIL import Image, ImageDraw
 import numpy as np
 
 from primitives import (
-    draw_oval, draw_symmetric, add_outline, add_glow, pulse_core,
-    draw_concentric_circles, draw_pixel_particles, draw_body_blob,
-    draw_eye, draw_appendage, draw_mouth, lerp_color
+    draw_body_blob, draw_eye, draw_eye_pair, draw_appendage,
+    draw_mouth, draw_eyebrow_ridges,
+    add_outline, add_glow, add_background_glow,
+    pulse_core, draw_core_behind_body,
+    draw_pixel_particles, draw_particles, generate_particles,
+    draw_spiral, draw_veins, draw_body_pattern,
+    draw_concentric_rings,
+    apply_membrane_texture,
+    lerp_color, create_hires_canvas, downsample, s,
+    RENDER_SCALE,
 )
-from palettes import get_palette, get_body_colors, desaturate_palette
+from palettes import (
+    get_palette, get_body_colors, desaturate_palette,
+    apply_mood_shift, sage_palette, transcendence_palette,
+)
 from dna import params_for_stage
 
 
 SIZE = 64
 CENTER_X = SIZE // 2
 CENTER_Y = SIZE // 2
+HSIZE = SIZE * RENDER_SCALE
+HCENTER_X = HSIZE // 2
+HCENTER_Y = HSIZE // 2
 
 
 def _create_canvas():
@@ -29,481 +53,772 @@ def _create_canvas():
 def _hue_to_rgb(hue):
     """Convert hue (0-360) to an RGB tuple."""
     h = (hue % 360) / 60.0
-    c = 200  # chroma
+    c = 200
     x = int(c * (1 - abs(h % 2 - 1)))
     c = int(c)
-    if h < 1:
-        return (c, x, 0)
-    elif h < 2:
-        return (x, c, 0)
-    elif h < 3:
-        return (0, c, x)
-    elif h < 4:
-        return (0, x, c)
-    elif h < 5:
-        return (x, 0, c)
-    else:
-        return (c, 0, x)
+    if h < 1: return (c, x, 0)
+    elif h < 2: return (x, c, 0)
+    elif h < 3: return (0, c, x)
+    elif h < 4: return (0, x, c)
+    elif h < 5: return (x, 0, c)
+    else: return (c, 0, x)
 
 
 # ===== STAGE 0: Syrma (Egg) =====
 
-def draw_stage_0(img, dna_params, frame=0):
-    """Draw Stage 0 - Syrma (Egg).
+def draw_stage_0(img, dna_params, frame=0, mood='neutral'):
+    """Draw Stage 0 - Syrma (Cosmic Egg).
 
-    A smooth oval with a spiral pattern and slow pulsing core.
-    Simple, mysterious, organic shape.
+    A beautiful cosmic egg with:
+    - Spiral galaxy energy pattern inside
+    - Bioluminescent veins on the shell surface
+    - Inner glow pulsing from the forming core
+    - Small sparkle particles floating around
     """
     p = params_for_stage(dna_params, 0)
     palette = get_palette(p['palette_warmth'])
+    if mood != 'neutral':
+        palette = apply_mood_shift(palette, mood)
     colors = get_body_colors(palette)
     core_rgb = _hue_to_rgb(p['core_hue'])
 
-    cx, cy = CENTER_X, CENTER_Y
+    # Work at 2x for anti-aliasing
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y
 
-    # Egg body dimensions
-    egg_w = int(14 * p['body_width'])
-    egg_h = int(20 * p['body_height'])
+    egg_w = s(int(15 * p['body_width']))
+    egg_h = s(int(22 * p['body_height']))
 
-    # Draw egg body (oval)
-    draw_body_blob(img, cx, cy, egg_w, egg_h, colors['body'], colors['outline'])
+    # Background aura glow (behind egg)
+    hi = add_background_glow(hi, (hcx, hcy), egg_w + s(8), core_rgb, 0.15)
 
-    # Spiral pattern on egg
-    draw = ImageDraw.Draw(img)
-    phase = frame * 0.25
-    spiral_color = (*palette[3], 120)
-    for i in range(20):
-        t = i / 20.0
-        angle = t * math.pi * 3 + phase
-        r = t * min(egg_w, egg_h) * 0.7
-        sx = int(cx + math.cos(angle) * r * 0.6)
-        sy = int(cy + math.sin(angle) * r * 0.9)
-        if 0 <= sx < SIZE and 0 <= sy < SIZE:
-            # Only draw if inside the egg shape
-            dx = (sx - cx) / max(1, egg_w)
-            dy = (sy - cy) / max(1, egg_h)
-            if dx * dx + dy * dy < 0.85:
-                draw.point((sx, sy), fill=spiral_color)
+    # Egg shell (layered for depth)
+    draw_body_blob(hi, hcx, hcy, egg_w, egg_h, colors['body_dark'],
+                   irregularity=0.05, seed=p['symmetry_seed'])
+    draw_body_blob(hi, hcx, hcy, egg_w - s(1), egg_h - s(1), colors['body'],
+                   irregularity=0.03, seed=p['symmetry_seed'])
+    # Highlight layer (upper half brighter)
+    draw_body_blob(hi, hcx, hcy - egg_h // 4, int(egg_w * 0.75),
+                   int(egg_h * 0.5), colors['body_light'],
+                   irregularity=0.02, seed=p['symmetry_seed'] + 1)
 
-    # Pulsating core
+    # Bioluminescent veins on shell
+    vein_color = (*core_rgb, 60)
+    draw_veins(hi, hcx, hcy, egg_w, egg_h, vein_color, count=6,
+               seed=p['symmetry_seed'])
+
+    # Spiral galaxy energy pattern inside
+    phase = frame * 0.3
+    spiral_color = (*palette['core_inner'], 90)
+    draw_spiral(hi, hcx, hcy, min(egg_w, egg_h) * 0.65, spiral_color,
+                turns=2.5, phase=phase, point_count=30)
+
+    # Pulsating core (forming inside)
     core_phase = (frame % 8) / 8.0
-    img_result = pulse_core(img, (cx, cy), int(egg_w * 0.4),
-                            core_rgb, core_phase)
-    img.paste(img_result, (0, 0))
+    hi = pulse_core(hi, (hcx, hcy + s(2)), int(egg_w * 0.35),
+                    core_rgb, core_phase, intensity=0.6)
 
-    # Soft glow
-    img_result = add_glow(img, (cx, cy), egg_w, core_rgb, 0.3)
-    img.paste(img_result, (0, 0))
+    # Inner glow
+    hi = add_glow(hi, (hcx, hcy), egg_w, core_rgb, 0.25)
 
-    # SNES-style outline
-    img_result = add_outline(img, colors['outline'],
-                             inner_color=colors['inner'])
-    img.paste(img_result, (0, 0))
+    # Membrane texture
+    hi = apply_membrane_texture(hi, intensity=0.06, seed=p['symmetry_seed'])
 
+    # Outline
+    hi = add_outline(hi, colors['outline'], inner_color=colors['inner'])
+
+    # Downsample to 64x64
+    result = downsample(hi)
+
+    # Sparkle particles (drawn at final resolution for crispness)
+    sparkle_color = (*palette['particle_color'], 180)
+    particles = generate_particles(
+        (CENTER_X, CENTER_Y), 6, int(15 * p['body_width']) + 5,
+        sparkle_color, seed=p['symmetry_seed'] + frame,
+        upward_bias=0.3
+    )
+    result = draw_particles(result, particles, phase=(frame % 4) / 4.0)
+
+    img.paste(result, (0, 0))
     return img
 
 
 # ===== STAGE 1: Lali-na (Newborn) =====
 
-def draw_stage_1(img, dna_params, frame=0):
+def draw_stage_1(img, dna_params, frame=0, mood='neutral'):
     """Draw Stage 1 - Lali-na (Newborn).
 
-    Luminous blob with 2 big eyes and a small mouth. No appendages.
-    Cute, simple, glowing.
+    Tiny helpless blob that triggers protective instinct:
+    - HUGE expressive eyes (30%+ of face) with catch-lights
+    - Translucent body showing core through skin
+    - Tiny quivering mouth
+    - Soft, rounded proportions
     """
     p = params_for_stage(dna_params, 1)
     palette = get_palette(p['palette_warmth'])
-    colors = get_body_colors(palette)
+    if mood != 'neutral':
+        palette = apply_mood_shift(palette, mood)
+    colors = get_body_colors(palette, alpha_body=170)  # more translucent
     core_rgb = _hue_to_rgb(p['core_hue'])
 
-    cx, cy = CENTER_X, CENTER_Y + 2  # slightly lower center
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y + s(3)
 
-    # Body: rounded blob
-    body_w = int(16 * p['body_width'])
-    body_h = int(14 * p['body_height'])
+    body_w = s(int(17 * p['body_width']))
+    body_h = s(int(15 * p['body_height']))
 
-    # Draw a slightly blobby body using overlapping ovals
-    # Main body
-    draw_body_blob(img, cx, cy, body_w, body_h, colors['body'])
-    # Head bump (slightly above center)
-    head_w = int(body_w * 0.85)
-    head_h = int(body_h * 0.7)
-    draw_body_blob(img, cx, cy - int(body_h * 0.3), head_w, head_h, colors['body'])
+    # Body layer (drawn separately for translucency compositing)
+    body_layer = Image.new('RGBA', (HSIZE, HSIZE), (0, 0, 0, 0))
 
-    # Core glow (center of body)
+    # Rounded blobby body
+    draw_body_blob(body_layer, hcx, hcy, body_w, body_h, colors['body'],
+                   squash=0.1, irregularity=0.06, seed=p['symmetry_seed'])
+    # Head region (slightly above, lighter)
+    head_h = int(body_h * 0.65)
+    head_w = int(body_w * 0.9)
+    draw_body_blob(body_layer, hcx, hcy - int(body_h * 0.25), head_w, head_h,
+                   colors['body_light'], irregularity=0.04,
+                   seed=p['symmetry_seed'] + 1)
+
+    # Core glow showing through body (translucency)
     core_phase = (frame % 8) / 8.0
-    img_result = pulse_core(img, (cx, cy + 2), int(body_w * 0.35),
-                            core_rgb, core_phase)
-    img.paste(img_result, (0, 0))
+    hi = draw_core_behind_body(
+        body_layer, (hcx, hcy + s(2)), int(body_w * 0.4),
+        core_rgb, core_phase, body_alpha_factor=0.4
+    )
 
-    # Glow effect
-    img_result = add_glow(img, (cx, cy), body_w + 2, core_rgb, 0.35)
-    img.paste(img_result, (0, 0))
+    # Soft outer glow
+    hi = add_glow(hi, (hcx, hcy), body_w + s(3), core_rgb, 0.3)
 
-    # Eyes - big and expressive
-    eye_radius = 2 + p['eye_size']
-    eye_y = cy - int(body_h * 0.25)
+    # Membrane texture
+    hi = apply_membrane_texture(hi, intensity=0.05, seed=p['symmetry_seed'])
+
+    # HUGE eyes (at least 30% of face)
+    eye_radius = s(3 + p['eye_size'] + 1)  # bigger than before
+    eye_y = hcy - int(body_h * 0.2)
     eye_spacing = int(body_w * p['eye_spacing'])
 
-    # Draw eyes on the left half only, then mirror
-    left_eye_x = cx - eye_spacing
-    right_eye_x = cx + eye_spacing
+    blink = 0.0
+    if frame % 16 == 0:  # occasional blink
+        blink = 0.8
 
-    draw_eye(img, left_eye_x, eye_y, eye_radius,
-             pupil_ratio=0.45, eye_color=colors['eyes'],
-             pupil_color=(10, 10, 30, 255))
-    draw_eye(img, right_eye_x, eye_y, eye_radius,
-             pupil_ratio=0.45, eye_color=colors['eyes'],
-             pupil_color=(10, 10, 30, 255))
+    eye_mood = mood if mood in ('happy', 'sad', 'closed') else 'neutral'
+    draw_eye_pair(hi, hcx, eye_y, body_w, 0, eye_radius,
+                  p['eye_spacing'], colors, mood=eye_mood, blink=blink,
+                  iris_color=colors.get('eye_iris'))
 
-    # Small mouth
-    mouth_y = cy + int(body_h * 0.15)
-    draw_mouth(img, cx, mouth_y, p['mouth_size'] + 2, 2,
-               color=(40, 20, 40, 200))
+    # Tiny mouth
+    mouth_y = hcy + int(body_h * 0.15)
+    mouth_mood = mood if mood in ('happy', 'sad', 'open') else 'neutral'
+    draw_mouth(hi, hcx, mouth_y, s(p['mouth_size'] + 2), s(2),
+               color=(*palette['outline'], 180), mood=mouth_mood)
 
-    # SNES-style outline
-    img_result = add_outline(img, colors['outline'],
-                             inner_color=colors['inner'])
-    img.paste(img_result, (0, 0))
+    # Outline
+    hi = add_outline(hi, colors['outline'], inner_color=colors['inner'])
 
+    result = downsample(hi)
+
+    # Subtle body pulsation particles
+    if frame % 3 == 0:
+        sparkle = (*palette['particle_color'], 140)
+        particles = generate_particles(
+            (CENTER_X, CENTER_Y + 2), 3, int(17 * p['body_width']),
+            sparkle, seed=p['symmetry_seed'] + frame, upward_bias=0.2
+        )
+        result = draw_particles(result, particles, phase=0.3)
+
+    img.paste(result, (0, 0))
     return img
 
 
 # ===== STAGE 2: Lali-shi (Infant) =====
 
-def draw_stage_2(img, dna_params, frame=0):
+def draw_stage_2(img, dna_params, frame=0, mood='neutral'):
     """Draw Stage 2 - Lali-shi (Infant).
-    Structured blob, 2 small appendages, huge eyes.
+
+    Growing curiosity:
+    - Still huge eyes with visible iris colors from DNA
+    - First tiny tentacle-appendages sprouting
+    - More structured body
+    - Expressive eyebrow-ridges
     """
     p = params_for_stage(dna_params, 2)
     palette = get_palette(p['palette_warmth'])
-    colors = get_body_colors(palette)
+    if mood != 'neutral':
+        palette = apply_mood_shift(palette, mood)
+    colors = get_body_colors(palette, alpha_body=180)
     core_rgb = _hue_to_rgb(p['core_hue'])
-    cx, cy = CENTER_X, CENTER_Y + 2
 
-    body_w = int(15 * p['body_width'])
-    body_h = int(16 * p['body_height'])
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y + s(2)
 
-    # Body
-    draw_body_blob(img, cx, cy, body_w, body_h, colors['body'])
-    draw_body_blob(img, cx, cy - int(body_h * 0.35), int(body_w * 0.9),
-                   int(body_h * 0.6), colors['body_light'])
+    body_w = s(int(16 * p['body_width']))
+    body_h = s(int(17 * p['body_height']))
 
-    # Core
+    # Body layers
+    body_layer = Image.new('RGBA', (HSIZE, HSIZE), (0, 0, 0, 0))
+    draw_body_blob(body_layer, hcx, hcy, body_w, body_h, colors['body'],
+                   squash=0.08, irregularity=0.05, seed=p['symmetry_seed'])
+    # Head region
+    draw_body_blob(body_layer, hcx, hcy - int(body_h * 0.3),
+                   int(body_w * 0.85), int(body_h * 0.55),
+                   colors['body_light'], irregularity=0.03,
+                   seed=p['symmetry_seed'] + 1)
+
+    # Core behind body
     core_phase = (frame % 8) / 8.0
-    img_result = pulse_core(img, (cx, cy + 2), int(body_w * 0.3), core_rgb, core_phase)
-    img.paste(img_result, (0, 0))
-    img_result = add_glow(img, (cx, cy), body_w, core_rgb, 0.3)
-    img.paste(img_result, (0, 0))
+    hi = draw_core_behind_body(
+        body_layer, (hcx, hcy + s(2)), int(body_w * 0.35),
+        core_rgb, core_phase, body_alpha_factor=0.35
+    )
 
-    # 2 small appendages
-    wave = math.sin(frame * 0.5) * 0.3
-    for side in [-1, 1]:
-        ax = cx + side * body_w
-        ay = cy + int(body_h * 0.3)
-        angle = side * 0.8 + wave * side
-        draw_appendage(img, ax, ay, 6 + p['appendage_length'] * 2,
-                       angle, 2, colors['appendage'], colors['appendage_tip'])
+    hi = add_glow(hi, (hcx, hcy), body_w + s(2), core_rgb, 0.3)
 
-    # Huge eyes
-    eye_radius = 3 + p['eye_size']
-    eye_y = cy - int(body_h * 0.2)
-    eye_spacing = int(body_w * p['eye_spacing'])
-    for side in [-1, 1]:
-        draw_eye(img, cx + side * eye_spacing, eye_y, eye_radius,
-                 pupil_ratio=0.4, eye_color=colors['eyes'])
+    # Membrane texture
+    hi = apply_membrane_texture(hi, intensity=0.06, seed=p['symmetry_seed'])
+
+    # 2 small appendages (sprouting)
+    wave_phase = frame * 0.15
+    for side_val in [-1, 1]:
+        ax = hcx + side_val * body_w
+        ay = hcy + int(body_h * 0.3)
+        angle = side_val * 0.7
+        app_len = s(5 + p['appendage_length'] * 2)
+        draw_appendage(hi, ax, ay, app_len, angle, s(2),
+                       colors['appendage'], colors['appendage_tip'],
+                       curl=0.3, wave_phase=wave_phase)
+
+    # Huge eyes with iris color
+    eye_radius = s(3 + p['eye_size'] + 1)
+    eye_y_off = -int(body_h * 0.18)
+
+    blink = 0.0
+    if frame % 12 == 0:
+        blink = 0.7
+
+    eye_mood = mood if mood in ('happy', 'sad', 'closed') else 'neutral'
+    draw_eye_pair(hi, hcx, hcy, body_w, eye_y_off, eye_radius,
+                  p['eye_spacing'], colors, mood=eye_mood, blink=blink,
+                  iris_color=colors.get('eye_iris'))
+
+    # Eyebrow ridges
+    brow_color = (*palette['body_shadow'], 150)
+    brow_mood = mood if mood in ('happy', 'sad', 'angry') else 'neutral'
+    draw_eyebrow_ridges(hi, hcx, hcy, body_w, eye_y_off, p['eye_spacing'],
+                        brow_color, mood=brow_mood)
 
     # Mouth
-    draw_mouth(img, cx, cy + int(body_h * 0.2), p['mouth_size'] + 2, 2)
+    mouth_y = hcy + int(body_h * 0.18)
+    mouth_mood = mood if mood in ('happy', 'sad', 'open') else 'neutral'
+    draw_mouth(hi, hcx, mouth_y, s(p['mouth_size'] + 2), s(2),
+               color=(*palette['outline'], 180), mood=mouth_mood)
 
     # Outline
-    img_result = add_outline(img, colors['outline'], inner_color=colors['inner'])
-    img.paste(img_result, (0, 0))
+    hi = add_outline(hi, colors['outline'], inner_color=colors['inner'])
+
+    result = downsample(hi)
+    img.paste(result, (0, 0))
     return img
 
 
 # ===== STAGE 3: Lali-ko (Child) =====
 
-def draw_stage_3(img, dna_params, frame=0):
+def draw_stage_3(img, dna_params, frame=0, mood='neutral'):
     """Draw Stage 3 - Lali-ko (Child).
-    Elongated body, 4 appendages, facial expressions.
+
+    Personality emerging:
+    - Elongated body with head/torso distinction
+    - 4 developed appendages with individual movement
+    - Expressive face: eyebrow ridges, smile/frown
+    - Prominent core pulsing with mood colors
     """
     p = params_for_stage(dna_params, 3)
     palette = get_palette(p['palette_warmth'])
-    colors = get_body_colors(palette)
+    if mood != 'neutral':
+        palette = apply_mood_shift(palette, mood)
+    colors = get_body_colors(palette, alpha_body=190)
     core_rgb = _hue_to_rgb(p['core_hue'])
-    cx, cy = CENTER_X, CENTER_Y + 1
 
-    body_w = int(14 * p['body_width'])
-    body_h = int(20 * p['body_height'])
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y + s(1)
 
-    # Elongated body
-    draw_body_blob(img, cx, cy, body_w, body_h, colors['body'])
-    draw_body_blob(img, cx, cy - int(body_h * 0.3), int(body_w * 0.8),
-                   int(body_h * 0.5), colors['body_light'])
+    body_w = s(int(14 * p['body_width']))
+    body_h = s(int(21 * p['body_height']))
 
-    # Core
+    # Body layers
+    body_layer = Image.new('RGBA', (HSIZE, HSIZE), (0, 0, 0, 0))
+    # Torso
+    draw_body_blob(body_layer, hcx, hcy, body_w, body_h, colors['body'],
+                   squash=0.12, irregularity=0.04, seed=p['symmetry_seed'])
+    # Head (distinct from torso)
+    head_y = hcy - int(body_h * 0.32)
+    head_w = int(body_w * 0.85)
+    head_h = int(body_h * 0.5)
+    draw_body_blob(body_layer, hcx, head_y, head_w, head_h,
+                   colors['body_light'], irregularity=0.03,
+                   seed=p['symmetry_seed'] + 1)
+
+    # Core behind body
     core_phase = (frame % 8) / 8.0
-    img_result = pulse_core(img, (cx, cy + 2), int(body_w * 0.3), core_rgb, core_phase)
-    img.paste(img_result, (0, 0))
-    img_result = add_glow(img, (cx, cy), body_w, core_rgb, 0.25)
-    img.paste(img_result, (0, 0))
+    hi = draw_core_behind_body(
+        body_layer, (hcx, hcy + s(3)), int(body_w * 0.35),
+        core_rgb, core_phase, body_alpha_factor=0.3
+    )
 
-    # 4 appendages
-    wave = math.sin(frame * 0.5) * 0.4
-    app_count = min(4, p['appendage_count']) if p['appendage_count'] > 0 else 4
-    app_len = 8 + p['appendage_length'] * 3
+    hi = add_glow(hi, (hcx, hcy), body_w + s(2), core_rgb, 0.25)
+
+    # Membrane texture
+    hi = apply_membrane_texture(hi, intensity=0.07, seed=p['symmetry_seed'])
+
+    # 4 appendages with individual movement
+    wave_phase = frame * 0.12
+    app_count = min(4, max(2, p['appendage_count']))
+    app_len = s(8 + p['appendage_length'] * 3)
     positions = [
-        (-1, 0.1, -0.6), (1, 0.1, 0.6),
-        (-1, 0.5, -1.0), (1, 0.5, 1.0),
+        (-1, 0.05, -0.5, 0.0),
+        (1, 0.05, 0.5, 0.3),
+        (-1, 0.45, -0.9, 0.5),
+        (1, 0.45, 0.9, 0.8),
     ]
-    for i, (side, y_frac, base_angle) in enumerate(positions[:app_count]):
-        ax = cx + side * body_w
-        ay = cy + int(body_h * y_frac)
-        angle = base_angle + wave * side
-        draw_appendage(img, ax, ay, app_len, angle, 2,
-                       colors['appendage'], colors['appendage_tip'])
+    for i, (side, y_frac, base_angle, phase_off) in enumerate(positions[:app_count]):
+        ax = hcx + side * body_w
+        ay = hcy + int(body_h * y_frac)
+        draw_appendage(hi, ax, ay, app_len, base_angle, s(2),
+                       colors['appendage'], colors['appendage_tip'],
+                       curl=0.35, wave_phase=wave_phase + phase_off)
 
     # Eyes
-    eye_radius = 2 + p['eye_size']
-    eye_y = cy - int(body_h * 0.25)
-    eye_spacing = int(body_w * p['eye_spacing'])
-    for side in [-1, 1]:
-        draw_eye(img, cx + side * eye_spacing, eye_y, eye_radius, pupil_ratio=0.45)
+    eye_radius = s(2 + p['eye_size'] + 1)
+    eye_y_off = -int(body_h * 0.25)
+    blink = 0.0
+    if frame % 14 == 0:
+        blink = 0.6
+
+    eye_mood = mood if mood in ('happy', 'sad', 'closed') else 'neutral'
+    draw_eye_pair(hi, hcx, hcy, body_w, eye_y_off, eye_radius,
+                  p['eye_spacing'], colors, mood=eye_mood, blink=blink,
+                  iris_color=colors.get('eye_iris'))
+
+    # Eyebrow ridges
+    brow_color = (*palette['body_shadow'], 140)
+    brow_mood = mood if mood in ('happy', 'sad', 'angry') else 'neutral'
+    draw_eyebrow_ridges(hi, hcx, hcy, body_w, eye_y_off, p['eye_spacing'],
+                        brow_color, mood=brow_mood)
 
     # Mouth
-    draw_mouth(img, cx, cy + int(body_h * 0.05), p['mouth_size'] + 3, 2)
+    mouth_y = hcy + int(body_h * 0.02)
+    mouth_mood = mood if mood in ('happy', 'sad', 'open') else 'neutral'
+    draw_mouth(hi, hcx, mouth_y, s(p['mouth_size'] + 3), s(2),
+               color=(*palette['outline'], 170), mood=mouth_mood)
 
-    img_result = add_outline(img, colors['outline'], inner_color=colors['inner'])
-    img.paste(img_result, (0, 0))
+    hi = add_outline(hi, colors['outline'], inner_color=colors['inner'])
+
+    result = downsample(hi)
+    img.paste(result, (0, 0))
     return img
 
 
 # ===== STAGE 4: Lali-ren (Teen) =====
 
-def draw_stage_4(img, dna_params, frame=0):
+def draw_stage_4(img, dna_params, frame=0, mood='neutral'):
     """Draw Stage 4 - Lali-ren (Teen).
-    Defined body, long appendages, prominent core.
+
+    Awkward grace:
+    - Taller, slimmer proportions
+    - Long flowing appendages (tentacle-fins)
+    - Core sends light pulses through translucent body
+    - Body patterns emerge from DNA
     """
     p = params_for_stage(dna_params, 4)
     palette = get_palette(p['palette_warmth'])
-    colors = get_body_colors(palette)
+    if mood != 'neutral':
+        palette = apply_mood_shift(palette, mood)
+    colors = get_body_colors(palette, alpha_body=185)
     core_rgb = _hue_to_rgb(p['core_hue'])
-    cx, cy = CENTER_X, CENTER_Y
 
-    body_w = int(13 * p['body_width'])
-    body_h = int(22 * p['body_height'])
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y
 
-    draw_body_blob(img, cx, cy, body_w, body_h, colors['body'])
-    draw_body_blob(img, cx, cy - int(body_h * 0.3), int(body_w * 0.85),
-                   int(body_h * 0.45), colors['body_light'])
+    body_w = s(int(13 * p['body_width']))
+    body_h = s(int(24 * p['body_height']))
 
-    # Prominent core
+    # Taller slimmer body
+    body_layer = Image.new('RGBA', (HSIZE, HSIZE), (0, 0, 0, 0))
+    draw_body_blob(body_layer, hcx, hcy, body_w, body_h, colors['body'],
+                   squash=0.15, irregularity=0.03, seed=p['symmetry_seed'])
+    # Head region
+    head_y = hcy - int(body_h * 0.3)
+    draw_body_blob(body_layer, hcx, head_y, int(body_w * 0.85),
+                   int(body_h * 0.42), colors['body_light'],
+                   irregularity=0.02, seed=p['symmetry_seed'] + 1)
+
+    # Body patterns (stripes/spots/swirls from DNA)
+    pattern_type = p['core_pattern']
+    pattern_color = (*palette['pattern_color'], 80)
+    draw_body_pattern(body_layer, hcx, hcy, body_w, body_h,
+                      pattern_type, pattern_color, seed=p['symmetry_seed'])
+
+    # Core behind body with stronger translucency
     core_phase = (frame % 8) / 8.0
-    img_result = pulse_core(img, (cx, cy + 3), int(body_w * 0.4), core_rgb, core_phase)
-    img.paste(img_result, (0, 0))
-    img_result = add_glow(img, (cx, cy), body_w + 3, core_rgb, 0.4)
-    img.paste(img_result, (0, 0))
+    hi = draw_core_behind_body(
+        body_layer, (hcx, hcy + s(4)), int(body_w * 0.4),
+        core_rgb, core_phase, body_alpha_factor=0.35
+    )
 
-    # Long appendages
-    wave = math.sin(frame * 0.5) * 0.5
-    app_len = 10 + p['appendage_length'] * 4
+    hi = add_glow(hi, (hcx, hcy), body_w + s(4), core_rgb, 0.35)
+
+    hi = apply_membrane_texture(hi, intensity=0.07, seed=p['symmetry_seed'])
+
+    # Long flowing appendages with tip glow
+    wave_phase = frame * 0.1
+    app_len = s(12 + p['appendage_length'] * 4)
     positions = [
-        (-1, -0.05, -0.5), (1, -0.05, 0.5),
-        (-1, 0.25, -0.8), (1, 0.25, 0.8),
-        (-1, 0.55, -1.1), (1, 0.55, 1.1),
+        (-1, -0.05, -0.4, 0.0),
+        (1, -0.05, 0.4, 0.25),
+        (-1, 0.2, -0.7, 0.5),
+        (1, 0.2, 0.7, 0.75),
+        (-1, 0.45, -1.0, 0.33),
+        (1, 0.45, 1.0, 0.66),
     ]
-    for i, (side, y_frac, base_angle) in enumerate(positions[:p['appendage_count']]):
-        ax = cx + side * body_w
-        ay = cy + int(body_h * y_frac)
-        angle = base_angle + wave * side * (0.5 + i * 0.2)
-        draw_appendage(img, ax, ay, app_len, angle, 2,
-                       colors['appendage'], colors['appendage_tip'])
+    for i, (side, y_frac, base_angle, phase_off) in enumerate(
+            positions[:p['appendage_count']]):
+        ax = hcx + side * body_w
+        ay = hcy + int(body_h * y_frac)
+        draw_appendage(hi, ax, ay, app_len, base_angle, s(2),
+                       colors['appendage'], colors['appendage_tip'],
+                       curl=0.4, wave_phase=wave_phase + phase_off,
+                       tip_glow_color=colors.get('tip_glow'))
 
-    # Eyes
-    eye_radius = 2 + p['eye_size']
-    eye_y = cy - int(body_h * 0.28)
-    eye_spacing = int(body_w * p['eye_spacing'])
-    for side in [-1, 1]:
-        draw_eye(img, cx + side * eye_spacing, eye_y, eye_radius, pupil_ratio=0.5)
+    # Eyes (more complex)
+    eye_radius = s(2 + p['eye_size'] + 1)
+    eye_y_off = -int(body_h * 0.27)
+    blink = 0.8 if frame % 16 == 0 else 0.0
+    eye_mood = mood if mood in ('happy', 'sad', 'closed') else 'neutral'
+    draw_eye_pair(hi, hcx, hcy, body_w, eye_y_off, eye_radius,
+                  p['eye_spacing'], colors, mood=eye_mood, blink=blink,
+                  iris_color=colors.get('eye_iris'))
 
-    draw_mouth(img, cx, cy + int(body_h * 0.0), p['mouth_size'] + 3, 3)
+    # Eyebrow ridges
+    brow_color = (*palette['body_shadow'], 130)
+    brow_mood = mood if mood in ('happy', 'sad', 'angry') else 'neutral'
+    draw_eyebrow_ridges(hi, hcx, hcy, body_w, eye_y_off, p['eye_spacing'],
+                        brow_color, mood=brow_mood)
 
-    img_result = add_outline(img, colors['outline'], inner_color=colors['inner'])
-    img.paste(img_result, (0, 0))
+    # Mouth
+    mouth_y = hcy - int(body_h * 0.02)
+    mouth_mood = mood if mood in ('happy', 'sad', 'open') else 'neutral'
+    draw_mouth(hi, hcx, mouth_y, s(p['mouth_size'] + 3), s(3),
+               color=(*palette['outline'], 160), mood=mouth_mood)
+
+    hi = add_outline(hi, colors['outline'], inner_color=colors['inner'])
+
+    result = downsample(hi)
+    img.paste(result, (0, 0))
     return img
 
 
 # ===== STAGE 5: Lali-vox (Adult) =====
 
-def draw_stage_5(img, dna_params, frame=0):
+def draw_stage_5(img, dna_params, frame=0, mood='neutral'):
     """Draw Stage 5 - Lali-vox (Adult).
-    Mature form, maximum DNA detail, saturated palette.
+
+    Full beauty:
+    - Elegant, balanced form
+    - All DNA features at maximum expression
+    - Flowing appendages with bioluminescent tip dots
+    - Rich saturated palette, complex core patterns
     """
     p = params_for_stage(dna_params, 5)
     palette = get_palette(p['palette_warmth'])
-    colors = get_body_colors(palette)
+    if mood != 'neutral':
+        palette = apply_mood_shift(palette, mood)
+    colors = get_body_colors(palette, alpha_body=190)
     core_rgb = _hue_to_rgb(p['core_hue'])
-    cx, cy = CENTER_X, CENTER_Y
 
-    body_w = int(14 * p['body_width'])
-    body_h = int(24 * p['body_height'])
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y
 
-    # Layered body
-    draw_body_blob(img, cx, cy, body_w, body_h, colors['body_dark'])
-    draw_body_blob(img, cx, cy, int(body_w * 0.9), int(body_h * 0.9), colors['body'])
-    draw_body_blob(img, cx, cy - int(body_h * 0.25), int(body_w * 0.8),
-                   int(body_h * 0.45), colors['body_light'])
+    body_w = s(int(14 * p['body_width']))
+    body_h = s(int(25 * p['body_height']))
 
-    # Strong core
+    # Layered body for depth
+    body_layer = Image.new('RGBA', (HSIZE, HSIZE), (0, 0, 0, 0))
+    draw_body_blob(body_layer, hcx, hcy, body_w, body_h, colors['body_dark'],
+                   squash=0.12, irregularity=0.03, seed=p['symmetry_seed'])
+    draw_body_blob(body_layer, hcx, hcy, int(body_w * 0.93),
+                   int(body_h * 0.93), colors['body'],
+                   irregularity=0.02, seed=p['symmetry_seed'])
+    # Head
+    head_y = hcy - int(body_h * 0.27)
+    draw_body_blob(body_layer, hcx, head_y, int(body_w * 0.82),
+                   int(body_h * 0.43), colors['body_light'],
+                   irregularity=0.02, seed=p['symmetry_seed'] + 1)
+
+    # Body patterns at full expression
+    pattern_type = p['core_pattern']
+    pattern_color = (*palette['pattern_color'], 90)
+    draw_body_pattern(body_layer, hcx, hcy, body_w, body_h,
+                      pattern_type, pattern_color, seed=p['symmetry_seed'])
+
+    # Strong core with translucency
     core_phase = (frame % 8) / 8.0
-    img_result = pulse_core(img, (cx, cy + 3), int(body_w * 0.45), core_rgb, core_phase)
-    img.paste(img_result, (0, 0))
-    img_result = add_glow(img, (cx, cy), body_w + 4, core_rgb, 0.45)
-    img.paste(img_result, (0, 0))
+    hi = draw_core_behind_body(
+        body_layer, (hcx, hcy + s(3)), int(body_w * 0.45),
+        core_rgb, core_phase, body_alpha_factor=0.4
+    )
 
-    # All appendages, full length
-    wave = math.sin(frame * 0.5) * 0.5
-    app_len = 12 + p['appendage_length'] * 4
+    hi = add_glow(hi, (hcx, hcy), body_w + s(5), core_rgb, 0.4)
+
+    hi = apply_membrane_texture(hi, intensity=0.08, seed=p['symmetry_seed'])
+
+    # Full appendages with bioluminescent tips
+    wave_phase = frame * 0.1
+    app_len = s(14 + p['appendage_length'] * 4)
     positions = [
-        (-1, -0.1, -0.4), (1, -0.1, 0.4),
-        (-1, 0.15, -0.7), (1, 0.15, 0.7),
-        (-1, 0.4, -1.0), (1, 0.4, 1.0),
+        (-1, -0.1, -0.35, 0.0),
+        (1, -0.1, 0.35, 0.2),
+        (-1, 0.12, -0.6, 0.4),
+        (1, 0.12, 0.6, 0.6),
+        (-1, 0.35, -0.9, 0.3),
+        (1, 0.35, 0.9, 0.7),
     ]
-    for i, (side, y_frac, base_angle) in enumerate(positions[:p['appendage_count']]):
-        ax = cx + side * body_w
-        ay = cy + int(body_h * y_frac)
-        angle = base_angle + wave * side * (0.3 + i * 0.15)
-        draw_appendage(img, ax, ay, app_len, angle, 2,
-                       colors['appendage'], colors['appendage_tip'])
+    for i, (side, y_frac, base_angle, phase_off) in enumerate(
+            positions[:p['appendage_count']]):
+        ax = hcx + side * body_w
+        ay = hcy + int(body_h * y_frac)
+        draw_appendage(hi, ax, ay, app_len, base_angle, s(2),
+                       colors['appendage'], colors['appendage_tip'],
+                       curl=0.4, wave_phase=wave_phase + phase_off,
+                       tip_glow_color=colors.get('tip_glow'))
 
-    eye_radius = 2 + p['eye_size']
-    eye_y = cy - int(body_h * 0.28)
-    eye_spacing = int(body_w * p['eye_spacing'])
-    for side in [-1, 1]:
-        draw_eye(img, cx + side * eye_spacing, eye_y, eye_radius, pupil_ratio=0.5)
+    # Detailed eyes
+    eye_radius = s(2 + p['eye_size'] + 1)
+    eye_y_off = -int(body_h * 0.27)
+    blink = 0.7 if frame % 18 == 0 else 0.0
+    eye_mood = mood if mood in ('happy', 'sad', 'closed') else 'neutral'
+    draw_eye_pair(hi, hcx, hcy, body_w, eye_y_off, eye_radius,
+                  p['eye_spacing'], colors, mood=eye_mood, blink=blink,
+                  iris_color=colors.get('eye_iris'))
 
-    draw_mouth(img, cx, cy - int(body_h * 0.02), p['mouth_size'] + 3, 3)
+    # Eyebrow ridges
+    brow_color = (*palette['body_shadow'], 120)
+    brow_mood = mood if mood in ('happy', 'sad', 'angry') else 'neutral'
+    draw_eyebrow_ridges(hi, hcx, hcy, body_w, eye_y_off, p['eye_spacing'],
+                        brow_color, mood=brow_mood)
 
-    img_result = add_outline(img, colors['outline'], inner_color=colors['inner'])
-    img.paste(img_result, (0, 0))
+    # Mouth
+    mouth_y = hcy - int(body_h * 0.03)
+    mouth_mood = mood if mood in ('happy', 'sad', 'open') else 'neutral'
+    draw_mouth(hi, hcx, mouth_y, s(p['mouth_size'] + 3), s(3),
+               color=(*palette['outline'], 150), mood=mouth_mood)
+
+    hi = add_outline(hi, colors['outline'], inner_color=colors['inner'])
+
+    result = downsample(hi)
+    img.paste(result, (0, 0))
     return img
 
 
 # ===== STAGE 6: Lali-mere (Sage) =====
 
-def draw_stage_6(img, dna_params, frame=0):
+def draw_stage_6(img, dna_params, frame=0, mood='neutral'):
     """Draw Stage 6 - Lali-mere (Sage).
-    Stylized, reflective eyes, desaturated noble palette, light aura.
+
+    Noble wisdom:
+    - Slightly smaller, more compact
+    - Deep reflective eyes
+    - Desaturated noble palette (silver, deep blue, muted gold)
+    - Luminous aura around body
+    - Slow deliberate appendage movement
     """
     p = params_for_stage(dna_params, 6)
-    palette = desaturate_palette(get_palette(p['palette_warmth']), 0.35)
-    colors = get_body_colors(palette)
+    palette = sage_palette(get_palette(p['palette_warmth']))
+    if mood != 'neutral':
+        palette = apply_mood_shift(palette, mood)
+    colors = get_body_colors(palette, alpha_body=200)
     core_rgb = _hue_to_rgb(p['core_hue'])
-    cx, cy = CENTER_X, CENTER_Y
 
-    body_w = int(13 * p['body_width'])
-    body_h = int(22 * p['body_height'])
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y
 
-    # Aura (drawn first, behind body)
-    aura_color = tuple(min(255, c + 80) for c in core_rgb)
-    img_result = add_glow(img, (cx, cy), body_w + 8, aura_color, 0.15)
-    img.paste(img_result, (0, 0))
+    body_w = s(int(13 * p['body_width']))
+    body_h = s(int(22 * p['body_height']))
 
-    draw_body_blob(img, cx, cy, body_w, body_h, colors['body'])
-    draw_body_blob(img, cx, cy - int(body_h * 0.25), int(body_w * 0.8),
-                   int(body_h * 0.4), colors['body_light'])
+    # Luminous aura (drawn first, behind everything)
+    aura_color = tuple(min(255, c + 60) for c in core_rgb)
+    hi = add_background_glow(hi, (hcx, hcy), body_w + s(10), aura_color, 0.12)
 
-    core_phase = (frame % 8) / 8.0
-    img_result = pulse_core(img, (cx, cy + 2), int(body_w * 0.35), core_rgb, core_phase)
-    img.paste(img_result, (0, 0))
+    # Compact body
+    body_layer = Image.new('RGBA', (HSIZE, HSIZE), (0, 0, 0, 0))
+    draw_body_blob(body_layer, hcx, hcy, body_w, body_h, colors['body'],
+                   irregularity=0.02, seed=p['symmetry_seed'])
+    draw_body_blob(body_layer, hcx, hcy - int(body_h * 0.25),
+                   int(body_w * 0.8), int(body_h * 0.42),
+                   colors['body_light'], irregularity=0.02,
+                   seed=p['symmetry_seed'] + 1)
 
-    # Appendages (graceful)
-    wave = math.sin(frame * 0.4) * 0.3
-    app_len = 10 + p['appendage_length'] * 3
+    # Subtle patterns
+    pattern_type = p['core_pattern']
+    pattern_color = (*palette['pattern_color'], 60)
+    draw_body_pattern(body_layer, hcx, hcy, body_w, body_h,
+                      pattern_type, pattern_color, seed=p['symmetry_seed'])
+
+    # Steady warm core
+    core_phase = (frame % 12) / 12.0  # slower pulse
+    hi = draw_core_behind_body(
+        body_layer, (hcx, hcy + s(2)), int(body_w * 0.35),
+        core_rgb, core_phase, body_alpha_factor=0.3
+    )
+
+    hi = apply_membrane_texture(hi, intensity=0.05, seed=p['symmetry_seed'])
+
+    # Graceful, slow appendages
+    wave_phase = frame * 0.06  # very slow
+    app_len = s(10 + p['appendage_length'] * 3)
     positions = [
-        (-1, 0.0, -0.5), (1, 0.0, 0.5),
-        (-1, 0.3, -0.9), (1, 0.3, 0.9),
+        (-1, -0.02, -0.45, 0.0),
+        (1, -0.02, 0.45, 0.5),
+        (-1, 0.3, -0.8, 0.25),
+        (1, 0.3, 0.8, 0.75),
     ]
-    for i, (side, y_frac, base_angle) in enumerate(positions[:min(4, p['appendage_count'])]):
-        ax = cx + side * body_w
-        ay = cy + int(body_h * y_frac)
-        angle = base_angle + wave * side
-        draw_appendage(img, ax, ay, app_len, angle, 2,
-                       colors['appendage'], colors['appendage_tip'])
+    for i, (side, y_frac, base_angle, phase_off) in enumerate(
+            positions[:min(4, p['appendage_count'])]):
+        ax = hcx + side * body_w
+        ay = hcy + int(body_h * y_frac)
+        draw_appendage(hi, ax, ay, app_len, base_angle, s(2),
+                       colors['appendage'], colors['appendage_tip'],
+                       curl=0.25, wave_phase=wave_phase + phase_off,
+                       tip_glow_color=colors.get('tip_glow'))
 
-    # Reflective eyes (slightly larger, with double highlight)
-    eye_radius = 3 + p['eye_size']
-    eye_y = cy - int(body_h * 0.25)
-    eye_spacing = int(body_w * p['eye_spacing'])
-    for side in [-1, 1]:
-        ex = cx + side * eye_spacing
-        draw_eye(img, ex, eye_y, eye_radius, pupil_ratio=0.5,
-                 eye_color=(200, 220, 240, 255))
-        # Second small highlight for "reflective" look
-        draw = ImageDraw.Draw(img)
-        hx = ex + side
-        hy = eye_y + 1
-        draw.point((hx, hy), fill=(255, 255, 255, 200))
+    # Deep reflective eyes (slightly larger, with double highlight)
+    eye_radius = s(3 + p['eye_size'] + 1)
+    eye_y_off = -int(body_h * 0.24)
+    blink = 0.5 if frame % 20 == 0 else 0.0
+    eye_mood = mood if mood in ('happy', 'sad', 'closed') else 'neutral'
+    draw_eye_pair(hi, hcx, hcy, body_w, eye_y_off, eye_radius,
+                  p['eye_spacing'], colors, mood=eye_mood, blink=blink,
+                  iris_color=colors.get('eye_iris'))
 
-    draw_mouth(img, cx, cy + int(body_h * 0.05), p['mouth_size'] + 2, 2)
+    # Second catch-light for reflective look
+    draw = ImageDraw.Draw(hi)
+    spacing = int(body_w * p['eye_spacing'])
+    for side_val in [-1, 1]:
+        hx = hcx + side_val * spacing + side_val * s(1)
+        hy = hcy + eye_y_off + s(1)
+        draw.ellipse((hx - 1, hy - 1, hx + 1, hy + 1),
+                      fill=(255, 255, 255, 180))
 
-    img_result = add_outline(img, colors['outline'], inner_color=colors['inner'])
-    img.paste(img_result, (0, 0))
+    # Mouth
+    mouth_y = hcy + int(body_h * 0.04)
+    mouth_mood = mood if mood in ('happy', 'sad', 'open') else 'neutral'
+    draw_mouth(hi, hcx, mouth_y, s(p['mouth_size'] + 2), s(2),
+               color=(*palette['outline'], 140), mood=mouth_mood)
+
+    hi = add_outline(hi, colors['outline'], inner_color=colors['inner'])
+
+    result = downsample(hi)
+    img.paste(result, (0, 0))
     return img
 
 
 # ===== STAGE 7: Lali-thishi (Transcendence) =====
 
-def draw_stage_7(img, dna_params, frame=0):
+def draw_stage_7(img, dna_params, frame=0, mood='neutral'):
     """Draw Stage 7 - Lali-thishi (Transcendence).
-    Translucent, undefined outline, light particles, iridescent.
+
+    Ethereal:
+    - Body becoming translucent/dissolving at edges
+    - Particles of light detaching constantly
+    - Iridescent shifting colors
+    - Eyes are pure light
+    - Shape is fluid, almost formless
     """
     p = params_for_stage(dna_params, 7)
-    palette = get_palette(p['palette_warmth'])
-    colors = get_body_colors(palette)
-    core_rgb = _hue_to_rgb(p['core_hue'])
-    cx, cy = CENTER_X, CENTER_Y
+    base_palette = get_palette(p['palette_warmth'])
+    palette = transcendence_palette(base_palette, phase=frame * 0.1)
+    colors = get_body_colors(palette, alpha_body=100)  # very translucent
+    core_rgb = _hue_to_rgb((p['core_hue'] + frame * 12) % 360)
 
-    body_w = int(12 * p['body_width'])
-    body_h = int(20 * p['body_height'])
+    hi = create_hires_canvas()
+    hcx, hcy = HCENTER_X, HCENTER_Y
 
-    # Translucent body (lower alpha)
-    body_col = (*palette[0], 100)
-    body_light = (*palette[4], 80)
+    body_w = s(int(12 * p['body_width']))
+    body_h = s(int(21 * p['body_height']))
 
-    draw_body_blob(img, cx, cy, body_w, body_h, body_col)
-    draw_body_blob(img, cx, cy - int(body_h * 0.2), int(body_w * 0.8),
-                   int(body_h * 0.4), body_light)
+    # Ethereal aura
+    hi = add_background_glow(hi, (hcx, hcy), body_w + s(12),
+                             core_rgb, 0.2)
+
+    # Translucent dissolving body
+    body_col = (*palette['body_base'], 90)
+    body_light = (*palette['body_highlight'], 70)
+    draw_body_blob(hi, hcx, hcy, body_w, body_h, body_col,
+                   irregularity=0.1 + frame * 0.005,
+                   seed=p['symmetry_seed'] + frame)
+    draw_body_blob(hi, hcx, hcy - int(body_h * 0.2),
+                   int(body_w * 0.8), int(body_h * 0.4), body_light,
+                   irregularity=0.08, seed=p['symmetry_seed'] + 1 + frame)
 
     # Intense iridescent core
     core_phase = (frame % 12) / 12.0
-    shifted_hue = (p['core_hue'] + int(frame * 15)) % 360
-    shifting_rgb = _hue_to_rgb(shifted_hue)
-    img_result = pulse_core(img, (cx, cy), int(body_w * 0.5),
-                            shifting_rgb, core_phase)
-    img.paste(img_result, (0, 0))
-    img_result = add_glow(img, (cx, cy), body_w + 6, shifting_rgb, 0.5)
-    img.paste(img_result, (0, 0))
+    hi = pulse_core(hi, (hcx, hcy), int(body_w * 0.5),
+                    core_rgb, core_phase, intensity=1.0)
+    hi = add_glow(hi, (hcx, hcy), body_w + s(8), core_rgb, 0.5)
 
-    # Light particles
-    particle_color = (*shifting_rgb, 180)
-    draw_pixel_particles(img, (cx, cy), 15 + frame * 2, body_w + 10,
-                         particle_color, seed=p['symmetry_seed'] + frame)
+    # Ethereal eyes (pure light)
+    eye_radius = s(2 + p['eye_size'])
+    eye_y_off = -int(body_h * 0.18)
+    spacing = int(body_w * p['eye_spacing'])
+    draw = ImageDraw.Draw(hi)
+    for side_val in [-1, 1]:
+        ex = hcx + side_val * spacing
+        ey = hcy + eye_y_off
+        # Glowing orb eyes
+        for ring in range(eye_radius, 0, -1):
+            alpha = int(255 * (1.0 - ring / eye_radius) * 0.8)
+            c = lerp_color((*core_rgb, 255), (255, 255, 255, 255),
+                           1.0 - ring / eye_radius)
+            draw.ellipse(
+                (ex - ring, ey - ring, ex + ring, ey + ring),
+                fill=c[:4] if len(c) >= 4 else (*c[:3], alpha)
+            )
 
-    # Ethereal eyes
-    eye_radius = 2 + p['eye_size']
-    eye_y = cy - int(body_h * 0.2)
-    eye_spacing = int(body_w * p['eye_spacing'])
-    for side in [-1, 1]:
-        draw_eye(img, cx + side * eye_spacing, eye_y, eye_radius,
-                 pupil_ratio=0.3, eye_color=(240, 250, 255, 160),
-                 pupil_color=(200, 220, 255, 200),
-                 highlight_color=(255, 255, 255, 220))
+    # Fluid appendages (dissolving)
+    wave_phase = frame * 0.08
+    app_len = s(8 + p['appendage_length'] * 2)
+    positions = [
+        (-1, 0.0, -0.5, 0.0),
+        (1, 0.0, 0.5, 0.5),
+        (-1, 0.3, -0.9, 0.25),
+        (1, 0.3, 0.9, 0.75),
+    ]
+    translucent_app = (*palette['appendage_base'], 80)
+    translucent_tip = (*palette['appendage_tip'], 50)
+    for i, (side, y_frac, base_angle, phase_off) in enumerate(
+            positions[:min(4, p['appendage_count'])]):
+        ax = hcx + side * body_w
+        ay = hcy + int(body_h * y_frac)
+        draw_appendage(hi, ax, ay, app_len, base_angle, s(1),
+                       translucent_app, translucent_tip,
+                       curl=0.5, wave_phase=wave_phase + phase_off)
 
-    # Very soft outline (almost none - translucent)
-    img_result = add_outline(img, (40, 40, 60, 120))
-    img.paste(img_result, (0, 0))
+    # Very soft outline
+    hi = add_outline(hi, (*palette['outline'], 80))
+
+    result = downsample(hi)
+
+    # Abundant light particles (at final resolution)
+    particle_count = 12 + frame * 2
+    particle_color = (*palette['particle_color'], 200)
+    particles = generate_particles(
+        (CENTER_X, CENTER_Y), particle_count,
+        int(12 * p['body_width']) + 8,
+        particle_color, seed=p['symmetry_seed'] + frame,
+        upward_bias=0.5
+    )
+    result = draw_particles(result, particles, phase=(frame % 6) / 6.0)
+
+    img.paste(result, (0, 0))
     return img
 
 
@@ -521,7 +836,7 @@ STAGE_FUNCTIONS = {
 }
 
 
-def draw_stage(stage, img, dna_params, frame=0):
+def draw_stage(stage, img, dna_params, frame=0, mood='neutral'):
     """Draw a specific stage on the given image.
 
     Args:
@@ -529,11 +844,9 @@ def draw_stage(stage, img, dna_params, frame=0):
         img: PIL Image (RGBA, 64x64)
         dna_params: dict from dna_to_params
         frame: animation frame index
-
-    Returns:
-        The modified image
+        mood: 'neutral', 'happy', 'sad', 'sick', etc.
     """
     func = STAGE_FUNCTIONS.get(stage)
     if func is None:
         raise ValueError(f"Unknown stage: {stage}")
-    return func(img, dna_params, frame)
+    return func(img, dna_params, frame, mood=mood)

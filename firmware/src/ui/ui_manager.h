@@ -21,6 +21,7 @@ namespace Manager {
         DEATH,
         MEMORIAL,
         EGG,
+        MINIGAME,
     };
 
     void init();
