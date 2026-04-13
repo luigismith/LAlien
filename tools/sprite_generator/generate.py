@@ -154,6 +154,55 @@ def _generate_contact_sheet(previews, stage_dir, stage_name):
     print(f"  Contact sheet: {sheet_path}")
 
 
+def _generate_mood_contact_sheet(stages, output_dir):
+    """Generate a combined contact sheet showing all stages x key moods.
+
+    Rows = stages, Columns = moods. Shows how emotions and evolution
+    are clearly differentiated.
+    """
+    moods = ['neutral', 'happy', 'sad', 'sick', 'sleep', 'love', 'hungry', 'play']
+    seed = "lalien_contact_mood_test"
+    dna_hash = generate_dna_from_seed(seed)
+    params = dna_to_params(dna_hash)
+
+    margin = 2
+    cell = SIZE + margin
+    label_h = 0  # no text labels (pixel art only)
+
+    cols = len(moods)
+    rows = len(stages)
+
+    sheet = Image.new('RGBA',
+                      (cols * cell + margin, rows * cell + margin),
+                      (15, 15, 25, 255))
+
+    for row_idx, stage in enumerate(stages):
+        for col_idx, mood in enumerate(moods):
+            preview = _create_canvas()
+            try:
+                draw_stage(stage, preview, params, frame=1, mood=mood)
+            except Exception as e:
+                print(f"    WARNING: stage {stage} mood {mood}: {e}")
+
+            x = margin + col_idx * cell
+            y = margin + row_idx * cell
+            sheet.paste(preview, (x, y), preview)
+
+    # 4x scale for viewing
+    scaled = sheet.resize(
+        (sheet.width * 4, sheet.height * 4),
+        Image.NEAREST
+    )
+
+    sheet_path = os.path.join(output_dir, 'mood_contact_sheet.png')
+    os.makedirs(output_dir, exist_ok=True)
+    scaled.save(sheet_path)
+    print(f"\nMood contact sheet: {sheet_path}")
+    print(f"  Rows: stages {stages}")
+    print(f"  Cols: {moods}")
+    return sheet_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Generate Lalien creature sprites'
@@ -175,10 +224,14 @@ def main():
         '--animations', type=str, default=None,
         help='Comma-separated list of animations (default: all)'
     )
+    parser.add_argument(
+        '--contact-sheet', action='store_true',
+        help='Generate a mood x stage contact sheet for visual validation'
+    )
 
     args = parser.parse_args()
 
-    stages = [int(s.strip()) for s in args.stages.split(',')]
+    stages = [int(s_val.strip()) for s_val in args.stages.split(',')]
     animations = None
     if args.animations:
         animations = [a.strip() for a in args.animations.split(',')]
@@ -188,6 +241,9 @@ def main():
     print(f"  Variants: {args.variants}")
     print(f"  Output: {args.output_dir}")
     print(f"  Animations: {animations or 'all'}")
+
+    if args.contact_sheet:
+        _generate_mood_contact_sheet(stages, args.output_dir)
 
     generate_sprites(stages, args.variants, args.output_dir, animations)
 
