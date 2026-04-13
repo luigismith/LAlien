@@ -1,0 +1,114 @@
+{
+  "stage": 2,
+  "stage_name": "lalishi",
+  "variant": 0,
+  "dna_params": {
+    "variant_index": 79,
+    "appendage_count": 1,
+    "appendage_length": 1,
+    "eye_size": 3,
+    "core_pattern": 6,
+    "body_curvature": 2,
+    "palette_warmth": 32,
+    "core_hue": 358,
+    "body_width": 0.9686274509803922,
+    "body_height": 0.7317647058823529,
+    "symmetry_seed": 53980,
+    "appendage_wave": 0.49019607843137253,
+    "eye_spacing": 0.4568627450980392,
+    "mouth_size": 1
+  },
+  "animations": {
+    "idle": {
+      "frames": 4,
+      "fps": 4,
+      "file": "idle.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "happy": {
+      "frames": 4,
+      "fps": 6,
+      "file": "happy.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "sad": {
+      "frames": 3,
+      "fps": 3,
+      "file": "sad.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "sleep": {
+      "frames": 3,
+      "fps": 2,
+      "file": "sleep.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "eat": {
+      "frames": 4,
+      "fps": 5,
+      "file": "eat.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "play": {
+      "frames": 4,
+      "fps": 6,
+      "file": "play.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "sick": {
+      "frames": 3,
+      "fps": 4,
+      "file": "sick.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "sing": {
+      "frames": 6,
+      "fps": 5,
+      "file": "sing.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "evolving": {
+      "frames": 8,
+      "fps": 6,
+      "file": "evolving.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "dying": {
+      "frames": 8,
+      "fps": 3,
+      "file": "dying.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "dead": {
+      "frames": 1,
+      "fps": 1,
+      "file": "dead.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "escaping": {
+      "frames": 8,
+      "fps": 5,
+      "file": "escaping.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "transcending": {
+      "frames": 12,
+      "fps": 4,
+      "file": "transcending.png",
+      "frame_width": 64,
+      "frame_height": 64
+    }
+  }
+}
