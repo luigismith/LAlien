@@ -474,47 +474,83 @@ void endGame() {
     if (!s_playing) return;
     s_playing = false;
 
-    // Calculate bonuses based on game type and score
+    // Calculate bonuses based on game type and score.
+    // Each game is a bonding ritual from Echòa's culture with specific
+    // developmental purpose:
+    //
+    // Thishí-Rèvosh (Echo Memory): Trains the rèvosh (memory) and unlocks
+    //   words from the Archivio Vibrazionale. Develops cognition + vocabulary.
+    //   Lore: The Lalìen replays fragments of the ancestral choral songs;
+    //   each successful round recovers a lost frequency from Echòa.
+    //
+    // Miskà-Vÿthi (Light Cleansing): Heals the sèvra (membrane) and
+    //   strengthens the nàvresh (bond). Develops trust + physical health.
+    //   Lore: The keeper's gentle touch dissolves the shadows of the
+    //   shà-rèvosh (voiceless void) that cling to the membrane during sleep.
+    //
+    // Sèlath-Nashi (Star Joy): Maps the thishí-sèlath (cosmic choir) and
+    //   develops cosmic awareness. Unlocks lore fragments + dream-visions.
+    //   Lore: The Lalìen traces the paths the sÿrma seeds traveled across
+    //   the cosmos, reconnecting with the laméren's farewell trajectories.
+
     switch (s_current_game) {
         case GameType::ECHO_MEMORY:
-            s_last_result.score           = echo_score;
-            s_last_result.nashi_bonus     = min(15.0f, echo_score * 0.5f);
-            s_last_result.cognition_bonus = min(10.0f, echo_score * 0.3f);
-            s_last_result.curiosity_bonus = min(5.0f,  echo_score * 0.15f);
-            s_last_result.affection_bonus = 3.0f;
-            s_last_result.miska_bonus     = 0.0f;
-            s_last_result.cosmic_bonus    = 0.0f;
-            s_last_result.security_bonus  = 0.0f;
-            s_last_result.moko_cost       = 5.0f;
+            s_last_result.score             = echo_score;
+            s_last_result.nashi_bonus       = min(15.0f, echo_score * 0.5f);
+            s_last_result.cognition_bonus   = min(12.0f, echo_score * 0.4f);  // primary: cognitive
+            s_last_result.curiosity_bonus   = min(5.0f,  echo_score * 0.15f);
+            s_last_result.affection_bonus   = 5.0f;  // shared ritual strengthens nàvresh
+            s_last_result.miska_bonus       = 0.0f;
+            s_last_result.cosmic_bonus      = min(3.0f, echo_score * 0.05f);
+            s_last_result.security_bonus    = 2.0f;
+            s_last_result.moko_cost         = 5.0f;
+            // Growth: each 2 levels unlocks 1 word from the Archive
+            s_last_result.vocab_unlock      = min((uint8_t)3, (uint8_t)(echo_seq_len / 2));
+            s_last_result.interaction_count = 3;  // counts as 3 interactions for evolution
+            s_last_result.triggers_dream    = (echo_seq_len >= 8); // long sequence = dream
             break;
 
         case GameType::LIGHT_CLEANSING:
-            s_last_result.score           = clean_score;
-            s_last_result.nashi_bonus     = 10.0f;
-            s_last_result.cognition_bonus = 0.0f;
-            s_last_result.curiosity_bonus = 0.0f;
-            s_last_result.affection_bonus = min(8.0f, clean_score * 0.1f);
-            s_last_result.miska_bonus     = clean_complete ? 35.0f : (cleanGetProgress() * 0.35f);
-            s_last_result.cosmic_bonus    = 0.0f;
-            s_last_result.security_bonus  = 5.0f;
-            s_last_result.moko_cost       = 3.0f;
+            s_last_result.score             = clean_score;
+            s_last_result.nashi_bonus       = 10.0f;
+            s_last_result.cognition_bonus   = 2.0f;  // learns about keeper's gentleness
+            s_last_result.curiosity_bonus   = 0.0f;
+            s_last_result.affection_bonus   = min(12.0f, clean_score * 0.15f); // primary: bond
+            s_last_result.miska_bonus       = clean_complete ? 35.0f : (cleanGetProgress() * 0.35f);
+            s_last_result.cosmic_bonus      = 0.0f;
+            s_last_result.security_bonus    = min(8.0f, clean_score * 0.1f); // physical safety
+            s_last_result.moko_cost         = 3.0f;
+            // Growth: successful clean unlocks body-related vocab
+            s_last_result.vocab_unlock      = clean_complete ? 2 : (cleanGetProgress() > 70 ? 1 : 0);
+            s_last_result.interaction_count = 5;  // lots of touch = lots of interactions
+            s_last_result.triggers_dream    = false;
             break;
 
         case GameType::STAR_JOY:
-            s_last_result.score           = star_score;
-            s_last_result.nashi_bonus     = min(5.0f, star_score * 0.05f);
-            s_last_result.cognition_bonus = min(10.0f, star_score * 0.1f);
-            s_last_result.curiosity_bonus = min(15.0f, star_score * 0.15f);
-            s_last_result.affection_bonus = 3.0f;
-            s_last_result.miska_bonus     = 0.0f;
-            s_last_result.cosmic_bonus    = min(8.0f, star_score * 0.08f);
-            s_last_result.security_bonus  = 0.0f;
-            s_last_result.moko_cost       = 4.0f;
+            s_last_result.score             = star_score;
+            s_last_result.nashi_bonus       = min(8.0f, star_score * 0.08f);
+            s_last_result.cognition_bonus   = min(8.0f, star_score * 0.08f);
+            s_last_result.curiosity_bonus   = min(15.0f, star_score * 0.15f); // primary: curiosity
+            s_last_result.affection_bonus   = 5.0f;
+            s_last_result.miska_bonus       = 0.0f;
+            s_last_result.cosmic_bonus      = min(12.0f, star_score * 0.12f); // primary: cosmic
+            s_last_result.security_bonus    = 0.0f;
+            s_last_result.moko_cost         = 4.0f;
+            // Growth: constellations unlock cosmic vocabulary + dream-visions
+            s_last_result.vocab_unlock      = min((uint8_t)3, star_constellation_idx);
+            s_last_result.interaction_count = 2;
+            s_last_result.triggers_dream    = star_session_complete; // full session = dream
             break;
     }
 
     Serial.print("[MINIGAME] Ended. Score: ");
-    Serial.println(s_last_result.score);
+    Serial.print(s_last_result.score);
+    Serial.print(" | Vocab unlock: ");
+    Serial.print(s_last_result.vocab_unlock);
+    Serial.print(" | Interactions: ");
+    Serial.print(s_last_result.interaction_count);
+    Serial.print(" | Dream: ");
+    Serial.println(s_last_result.triggers_dream ? "yes" : "no");
 }
 
 bool isPlaying() { return s_playing; }

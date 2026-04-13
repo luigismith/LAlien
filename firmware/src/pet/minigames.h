@@ -20,17 +20,21 @@ namespace MiniGames {
         STAR_JOY
     };
 
-    /// Results from a completed game, applied to pet needs.
+    /// Results from a completed game, applied to pet needs and growth.
     struct GameResult {
         uint16_t score;
-        float nashi_bonus;
-        float cognition_bonus;
-        float curiosity_bonus;
-        float affection_bonus;
-        float miska_bonus;
-        float cosmic_bonus;
-        float security_bonus;
+        float nashi_bonus;       // fun/joy
+        float cognition_bonus;   // cognitive development
+        float curiosity_bonus;   // curiosity/exploration
+        float affection_bonus;   // bond with keeper (navresh)
+        float miska_bonus;       // hygiene/membrane health
+        float cosmic_bonus;      // cosmic awareness (sèlath)
+        float security_bonus;    // sense of safety
         float moko_cost;         // rest drain from playing
+        // --- Growth effects ---
+        uint8_t vocab_unlock;    // number of Lalìen words to unlock from Archive
+        uint8_t interaction_count; // counts as N touch interactions for evolution
+        bool    triggers_dream;  // if true, triggers a mokó-thishí (dream-vision)
     };
 
     /// Initialize the mini-game subsystem. Call once at startup.

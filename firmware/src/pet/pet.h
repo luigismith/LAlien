@@ -71,4 +71,9 @@ namespace Pet {
     /// Set last words (called by LLM response handler during death).
     void setLastWords(const char* words);
 
+    /// Apply mini-game results to pet needs, vocabulary, and evolution.
+    /// Called by screen_minigame after endGame(). This is the bridge
+    /// between bonding rituals and actual creature growth.
+    void applyGameResult();
+
 } // namespace Pet

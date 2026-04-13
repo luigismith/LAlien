@@ -195,11 +195,11 @@ static void create_game_popup(lv_obj_t* parent) {
     };
     static const GameEntry entries[3] = {
         { "Thish\xc3\xad-R\xc3\xa8vosh",
-          "Eco della Memoria", game_btn_echo_cb },
+          "Ripeti il canto ancestrale di Ech\xc3\xb2a", game_btn_echo_cb },
         { "Misk\xc3\xa1-V\xc3\xbfthi",
-          "Pulizia di Luce", game_btn_clean_cb },
+          "Purifica la s\xc3\xa8vra dalle ombre del vuoto", game_btn_clean_cb },
         { "S\xc3\xa8lath-Nashi",
-          "Gioia delle Stelle", game_btn_star_cb },
+          "Ridisegna le costellazioni perdute", game_btn_star_cb },
     };
 
     for (uint8_t i = 0; i < 3; i++) {

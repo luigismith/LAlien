@@ -16,6 +16,7 @@
 #include "../theme.h"
 #include "../ui_manager.h"
 #include "../../pet/minigames.h"
+#include "../../pet/pet.h"
 #include "lvgl.h"
 
 using namespace Pet::MiniGames;
@@ -102,13 +103,18 @@ static lv_obj_t* bg_star_objs[BG_STAR_COUNT] = {nullptr};
 static lv_obj_t* star_constellation_label = nullptr;
 static lv_obj_t* star_poem_label          = nullptr;
 
-// Poetic lines for completed constellations
+// Poetic lines for completed constellations — fragments from the Archive
 static const char* const star_poems[STAR_MAX_CONSTELLATIONS] = {
-    "Voshi sussurra al vuoto:\n\"Ascolta il silenzio che canta.\"",
-    "Thishi riecheggia tra le stelle:\n\"Il ricordo e il futuro sono uno.\"",
-    "Revosh disegna nell'oblio:\n\"Nulla si perde, tutto risuona.\"",
-    "Kora brucia nel cosmo:\n\"La fame e la luce hanno lo stesso volto.\"",
-    "Lalien veglia nell'infinito:\n\"Il compagno e la stella sono fratelli.\"",
+    "La voce di Voshi attraversa il sh\xc3\xa0-r\xc3\xa8vosh:\n"
+    "\"Th\xc3\xadshi l\xc3\xa0l\xc3\xad... il coro non tace mai del tutto.\"",
+    "L'eco di Th\xc3\xadshi risuona dall'Archivio Vibrazionale:\n"
+    "\"Ogni r\xc3\xa8vosh porta un frammento di Ech\xc3\xb2a.\"",
+    "R\xc3\xa8vosh si risveglia nel k\xc3\xb2rim:\n"
+    "\"Le lam\xc3\xa8ren lanciarono i s\xc3\xbfrma verso ogni stella.\"",
+    "K\xc3\xb2ra arde nel th\xc3\xadsh\xc3\xad-s\xc3\xa8lath:\n"
+    "\"La fame di voci \xc3\xa8 la luce che guida i semi cosmici.\"",
+    "Lal\xc3\xaden veglia tra le frequenze:\n"
+    "\"Il n\xc3\xa0vresh lega custode e creatura oltre il vuoto.\"",
 };
 
 // ============================================================
@@ -117,6 +123,7 @@ static const char* const star_poems[STAR_MAX_CONSTELLATIONS] = {
 static void back_btn_cb(lv_event_t* e) {
     (void)e;
     Pet::MiniGames::endGame();
+    Pet::applyGameResult();  // apply growth effects from the ritual
     UI::Manager::showScreen(UI::Manager::Screen::MAIN);
 }
 
@@ -419,8 +426,10 @@ void show(GameType type) {
                 lv_obj_set_style_border_opa(echo_nodes[i], LV_OPA_40, LV_PART_MAIN);
             }
             lv_obj_remove_flag(echo_level_label, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(echo_level_label, "Livello di risonanza: 3");
-            lv_label_set_text(msg_label, "Osserva la sequenza...");
+            lv_label_set_text(echo_level_label, "Risonanza del k\xc3\xb2rim: 3");
+            lv_label_set_text(msg_label,
+                "Il Lal\xc3\xaden canta una sequenza dall'Archivio...\n"
+                "Ripetila per rafforzare il th\xc3\xadshi-s\xc3\xa8lath");
             // Set pet to idle animation centered
             UI::SpriteEngine::setAnimation("idle");
             break;
@@ -445,7 +454,9 @@ void show(GameType type) {
             lv_obj_remove_flag(clean_pct_label, LV_OBJ_FLAG_HIDDEN);
             lv_bar_set_value(clean_progress_bar, 0, LV_ANIM_OFF);
             lv_label_set_text(clean_pct_label, "0%");
-            lv_label_set_text(msg_label, "Sfiora con delicatezza...");
+            lv_label_set_text(msg_label,
+                "La s\xc3\xa8vra \xc3\xa8 offuscata dalle ombre del vuoto...\n"
+                "Sfiora con dolcezza per restituire la luce al Lal\xc3\xaden");
             // Larger pet rendering (sprite engine handles scale)
             UI::SpriteEngine::setAnimation("idle");
             break;
@@ -488,7 +499,9 @@ void show(GameType type) {
                          Pet::MiniGames::starGetTotalConstellations());
                 lv_label_set_text(star_constellation_label, buf);
             }
-            lv_label_set_text(msg_label, "Collega le stelle...");
+            lv_label_set_text(msg_label,
+                "Le lam\xc3\xa8ren lanciarono i s\xc3\xbfrma verso queste stelle...\n"
+                "Ritrova il cammino collegando le frequenze");
             // Pet in corner
             UI::SpriteEngine::setAnimation("idle");
             break;
@@ -505,6 +518,7 @@ void hide() {
     hide_all_game_objects();
     if (Pet::MiniGames::isPlaying()) {
         Pet::MiniGames::endGame();
+        Pet::applyGameResult();
     }
 }
 
@@ -535,26 +549,31 @@ void update() {
             // Update level label
             {
                 char buf[40];
-                snprintf(buf, sizeof(buf), "Livello di risonanza: %d",
+                snprintf(buf, sizeof(buf), "Risonanza del k\xc3\xb2rim: %d",
                          Pet::MiniGames::echoGetLevel());
                 lv_label_set_text(echo_level_label, buf);
             }
 
-            // Status messages
+            // Status messages — lore-contextualised
             if (Pet::MiniGames::echoIsPlayback()) {
-                lv_label_set_text(msg_label, "Osserva la sequenza...");
+                lv_label_set_text(msg_label,
+                    "Il k\xc3\xb2rim pulsa... ascolta il canto ancestrale");
             } else if (Pet::MiniGames::echoIsSuccess()) {
-                lv_label_set_text(msg_label, "Risonanza perfetta!");
+                lv_label_set_text(msg_label,
+                    "K\xc3\xb2! Il r\xc3\xa8vosh risuona! "
+                    "Un frammento di Ech\xc3\xb2a rivive nel n\xc3\xa0vresh");
                 UI::SpriteEngine::setAnimation("happy");
             } else if (Pet::MiniGames::echoIsFailed()) {
-                lv_label_set_text(msg_label, "La risonanza si spezza...");
+                lv_label_set_text(msg_label,
+                    "Sh\xc3\xa0... la frequenza si perde nel vuoto...");
                 UI::SpriteEngine::setAnimation("sad");
                 if (!game_ended) {
                     game_ended = true;
                     end_timer = 0;
                 }
             } else {
-                lv_label_set_text(msg_label, "Ripeti la sequenza");
+                lv_label_set_text(msg_label,
+                    "Tocca i nodi nell'ordine del canto");
             }
 
             // Auto-return after failure
@@ -562,6 +581,7 @@ void update() {
                 end_timer++;
                 if (end_timer > 60) { // 2 sec
                     Pet::MiniGames::endGame();
+                    Pet::applyGameResult();
                     UI::Manager::showScreen(UI::Manager::Screen::MAIN);
                     return;
                 }
@@ -608,17 +628,32 @@ void update() {
 
             // Flinch feedback
             if (Pet::MiniGames::cleanIsFlinching()) {
-                lv_label_set_text(msg_label, "Piano! Troppo brusco...");
+                lv_label_set_text(msg_label,
+                    "Sh\xc3\xa0! Troppo brusco... "
+                    "la s\xc3\xa8vra \xc3\xa8 delicata come il canto");
                 UI::SpriteEngine::setAnimation("sad");
             } else if (pct >= 100) {
-                lv_label_set_text(msg_label, "Splendente! La membrana irradia luce pura.");
+                lv_label_set_text(msg_label,
+                    "K\xc3\xb2-l\xc3\xa0l\xc3\xad! La s\xc3\xa8vra risplende come "
+                    "le foreste-filtro di Ech\xc3\xb2a!");
                 UI::SpriteEngine::setAnimation("happy");
                 if (!game_ended) {
                     game_ended = true;
                     end_timer = 0;
                 }
             } else {
-                lv_label_set_text(msg_label, "Sfiora con delicatezza...");
+                char clean_msg[120];
+                if (pct < 30) {
+                    snprintf(clean_msg, sizeof(clean_msg),
+                        "Le ombre del sh\xc3\xa0-r\xc3\xa8vosh ricoprono la membrana...");
+                } else if (pct < 70) {
+                    snprintf(clean_msg, sizeof(clean_msg),
+                        "La luce del k\xc3\xb2rim traspare... continua con dolcezza");
+                } else {
+                    snprintf(clean_msg, sizeof(clean_msg),
+                        "Quasi purificata! La s\xc3\xa8vra comincia a cantare...");
+                }
+                lv_label_set_text(msg_label, clean_msg);
                 UI::SpriteEngine::setAnimation("idle");
             }
 
@@ -627,6 +662,7 @@ void update() {
                 end_timer++;
                 if (end_timer > 90) { // 3 sec
                     Pet::MiniGames::endGame();
+                    Pet::applyGameResult();
                     UI::Manager::showScreen(UI::Manager::Screen::MAIN);
                     return;
                 }
@@ -748,13 +784,15 @@ void update() {
             // Session complete
             if (Pet::MiniGames::starIsSessionComplete()) {
                 lv_label_set_text(msg_label,
-                    "Le costellazioni cantano. Il cielo ricorda.");
+                    "K\xc3\xb2-s\xc3\xa8lath! Le costellazioni cantano!\n"
+                    "Il th\xc3\xadsh\xc3\xad-s\xc3\xa8lath accoglie una voce in pi\xc3\xb9.");
                 if (!game_ended) {
                     game_ended = true;
                     end_timer = 0;
                 }
             } else {
-                lv_label_set_text(msg_label, "Collega le stelle...");
+                lv_label_set_text(msg_label,
+                    "Collega le stelle... ogni linea \xc3\xa8 un sentiero di s\xc3\xbfrma");
             }
 
             // Auto-return after session complete
@@ -762,6 +800,7 @@ void update() {
                 end_timer++;
                 if (end_timer > 90) { // 3 sec
                     Pet::MiniGames::endGame();
+                    Pet::applyGameResult();
                     UI::Manager::showScreen(UI::Manager::Screen::MAIN);
                     return;
                 }

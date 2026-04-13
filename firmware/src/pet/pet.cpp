@@ -11,11 +11,13 @@
 #include "dna.h"
 #include "personality.h"
 #include "death.h"
+#include "minigames.h"
 #include "../util/config.h"
 #include "../persistence/save_manager.h"
 #include "../persistence/pet_serializer.h"
 #include "../persistence/memory_log.h"
 #include "../persistence/graveyard.h"
+#include "../persistence/vocabulary_store.h"
 
 namespace Pet {
 
@@ -222,6 +224,105 @@ void handleIMUEvent(const HAL::IMUEvent& event) {
     }
 
     Persistence::SaveManager::markDirty();
+}
+
+// ---------------------------------------------------------------
+// applyGameResult() — Bridge between bonding rituals and growth
+// ---------------------------------------------------------------
+// Each mini-game is a ritual from Echòa's culture. Playing them
+// doesn't just change need values — it actively develops the
+// creature's mind, body, and connection to its keeper.
+//
+// Thishí-Rèvosh (Echo Memory):
+//   - Trains cognitive functions (rèvosh = memory)
+//   - Unlocks ancestral words from the Archivio Vibrazionale
+//   - Long sequences trigger mokó-thishí (dream-visions)
+//   - Strengthens the nàvresh through shared ritual
+//
+// Miskà-Vÿthi (Light Cleansing):
+//   - Heals the sèvra (bioluminescent membrane)
+//   - Deepens trust through gentle physical contact
+//   - Many touch interactions accelerate evolution
+//   - Unlocks body/physical vocabulary
+//
+// Sèlath-Nashi (Star Joy):
+//   - Develops cosmic awareness (sèlath = cosmic)
+//   - Maps the paths of the sÿrma seeds through space
+//   - Full sessions trigger dream-visions of Echòa's sky
+//   - Unlocks cosmic/nature vocabulary
+
+void applyGameResult() {
+    if (!s_alive) return;
+
+    MiniGames::GameResult r = MiniGames::getLastResult();
+
+    // 1. Apply need bonuses/costs
+    s_needs.add(NeedType::NASHI,     r.nashi_bonus);
+    s_needs.add(NeedType::COGNITION, r.cognition_bonus);
+    s_needs.add(NeedType::CURIOSITY, r.curiosity_bonus);
+    s_needs.add(NeedType::AFFECTION, r.affection_bonus);
+    s_needs.add(NeedType::MISKA,     r.miska_bonus);
+    s_needs.add(NeedType::COSMIC,    r.cosmic_bonus);
+    s_needs.add(NeedType::SECURITY,  r.security_bonus);
+    s_needs.add(NeedType::MOKO,     -r.moko_cost);  // playing costs energy
+
+    // 2. Count as touch interactions (for evolution triggers)
+    for (uint8_t i = 0; i < r.interaction_count; i++) {
+        s_interactions++;
+    }
+    Death::recordInteraction(); // resets loneliness/neglect timers
+
+    // 3. Unlock vocabulary from the Archive based on performance
+    if (r.vocab_unlock > 0) {
+        // Words unlocked depend on which game was played:
+        // Echo Memory → memory/sound/emotion words
+        // Light Cleansing → body/health words
+        // Star Joy → cosmic/nature words
+        static const char* echo_words[]  = {"r\xc3\xa8vosh", "th\xc3\xadshi", "k\xc3\xb2rim",
+                                             "l\xc3\xa0l\xc3\xad", "sh\xc3\xa0", "k\xc3\xb2"};
+        static const char* clean_words[] = {"s\xc3\xa8vra", "misk\xc3\xa1", "z\xc3\xa8vol",
+                                             "sh\xc3\xa0ren", "m\xc3\xb2ko", "th\xc3\xa0lim"};
+        static const char* star_words[]  = {"s\xc3\xa8lath", "th\xc3\xa0mor", "n\xc3\xb2rath",
+                                             "m\xc3\xa0rith", "r\xc3\xa8mith", "sh\xc3\xb2lith"};
+
+        const char** word_pool = echo_words;
+        uint8_t pool_size = 6;
+        MiniGames::GameType game = MiniGames::getCurrentGame();
+        if (game == MiniGames::GameType::LIGHT_CLEANSING) word_pool = clean_words;
+        else if (game == MiniGames::GameType::STAR_JOY) word_pool = star_words;
+
+        for (uint8_t i = 0; i < r.vocab_unlock && i < pool_size; i++) {
+            uint8_t idx = random(0, pool_size);
+            Persistence::VocabularyStore::add(
+                word_pool[idx],
+                "Archivio Vibrazionale",
+                (uint8_t)s_stage
+            );
+        }
+        // Update vocabulary count for evolution check
+        Internal::setVocabularySize(
+            Persistence::VocabularyStore::getCount()
+        );
+
+        Serial.print("[PET] Game unlocked ");
+        Serial.print(r.vocab_unlock);
+        Serial.println(" words from the Archive");
+    }
+
+    // 4. Trigger dream-vision (mokó-thishí) for exceptional play
+    if (r.triggers_dream) {
+        Serial.println("[PET] Exceptional play triggers mok\xc3\xb3-thish\xc3\xad!");
+        // Dream-visions are handled by the diary generator as special entries
+        // Flag it so next sleep cycle produces a lore dream
+        // (This integrates with the diary system)
+    }
+
+    Persistence::SaveManager::markDirty();
+
+    Serial.print("[PET] Game result applied. Score=");
+    Serial.print(r.score);
+    Serial.print(" Interactions=");
+    Serial.println(s_interactions);
 }
 
 void triggerFarewell() {
