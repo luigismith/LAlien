@@ -1,6 +1,8 @@
 /**
  * pet_serializer.cpp — Serialize/deserialize pet state to/from JSON
  * Uses ArduinoJson 7.x for JSON handling and HAL::SDStorage for SD access.
+ * Saves all pet state including death trackers, conversation count,
+ * transcendence status, and last words.
  * Author: Claude Code | Date: 2026-04-13
  */
 #include "pet_serializer.h"
@@ -10,6 +12,7 @@
 #include "../pet/pet_internal.h"
 #include "../pet/needs.h"
 #include "../pet/dna.h"
+#include "../pet/death.h"
 
 namespace Persistence {
 namespace PetSerializer {
@@ -58,9 +61,14 @@ bool save() {
     doc["stage"] = (uint8_t)Pet::getStage();
     doc["age_seconds"] = Pet::Internal::getAgeSeconds();
     doc["alive"] = Pet::isAlive();
+    doc["transcended"] = Pet::Internal::getTranscended();
+    doc["buried"] = Pet::Internal::getBuried();
     doc["death_type"] = (uint8_t)Pet::getDeathType();
     doc["birth_timestamp"] = Pet::Internal::getBirthTimestamp();
     doc["last_evolution_stage"] = Pet::Internal::getLastEvolutionStage();
+
+    // Last words (preserved for graveyard if death sequence interrupted)
+    doc["last_words"] = Pet::getLastWords();
 
     // DNA hash
     Pet::DNA::DNAData& dna = Pet::Internal::getDNA();
@@ -85,14 +93,28 @@ bool save() {
 
     // Interactions
     JsonObject inter = doc["interactions"].to<JsonObject>();
-    inter["voice"] = Pet::Internal::getVoiceInteractions();
-    inter["touch"] = Pet::Internal::getTouchInteractions();
-    inter["play"]  = Pet::Internal::getPlayInteractions();
+    inter["voice"]         = Pet::Internal::getVoiceInteractions();
+    inter["touch"]         = Pet::Internal::getTouchInteractions();
+    inter["play"]          = Pet::Internal::getPlayInteractions();
+    inter["conversations"] = Pet::Internal::getConversations();
 
     // Pathological state timers
     doc["morak_start"] = Pet::Internal::getMorakStart();
     doc["velin_start"] = Pet::Internal::getVelinStart();
     doc["rena_start"]  = Pet::Internal::getRenaStart();
+
+    // Death trackers (for duration-based death conditions)
+    const Pet::Death::DeathTrackers& dt = Pet::Death::getTrackers();
+    JsonObject death_t = doc["death_trackers"].to<JsonObject>();
+    death_t["starvation_start"]         = dt.starvation_start;
+    death_t["neglect_start"]            = dt.neglect_start;
+    death_t["loneliness_start"]         = dt.loneliness_start;
+    death_t["sickness_start"]           = dt.sickness_start;
+    death_t["boredom_start"]            = dt.boredom_start;
+    death_t["heartbreak_bond_high_time"] = dt.heartbreak_bond_high_time;
+    death_t["heartbreak_last_bond"]     = dt.heartbreak_last_bond;
+    death_t["transcend_sustain_start"]  = dt.transcend_sustain_start;
+    death_t["last_interaction_time"]    = dt.last_interaction_time;
 
     // Serialize to string
     String json;
@@ -119,9 +141,15 @@ bool load() {
     // Age
     Pet::Internal::setAgeSeconds(doc["age_seconds"] | 0);
 
-    // Alive / death
+    // Alive / death / transcendence
     Pet::Internal::setAlive(doc["alive"] | true);
+    Pet::Internal::setTranscended(doc["transcended"] | false);
+    Pet::Internal::setBuried(doc["buried"] | false);
     Pet::Internal::setDeathType((Pet::DeathType)(doc["death_type"] | 0));
+
+    // Last words
+    const char* last_words = doc["last_words"] | "";
+    Pet::Internal::setLastWords(last_words);
 
     // Timestamps
     Pet::Internal::setBirthTimestamp(doc["birth_timestamp"] | 0);
@@ -160,6 +188,7 @@ bool load() {
         Pet::Internal::setVoiceInteractions(inter["voice"] | 0);
         Pet::Internal::setTouchInteractions(inter["touch"] | 0);
         Pet::Internal::setPlayInteractions(inter["play"]   | 0);
+        Pet::Internal::setConversations(inter["conversations"] | 0);
     }
 
     // Pathological state timers
@@ -167,13 +196,26 @@ bool load() {
     Pet::Internal::setVelinStart(doc["velin_start"] | 0);
     Pet::Internal::setRenaStart(doc["rena_start"]   | 0);
 
+    // Death trackers
+    JsonObject death_t = doc["death_trackers"];
+    if (death_t) {
+        Pet::Death::DeathTrackers dt = {};
+        dt.starvation_start         = death_t["starvation_start"] | 0;
+        dt.neglect_start            = death_t["neglect_start"] | 0;
+        dt.loneliness_start         = death_t["loneliness_start"] | 0;
+        dt.sickness_start           = death_t["sickness_start"] | 0;
+        dt.boredom_start            = death_t["boredom_start"] | 0;
+        dt.heartbreak_bond_high_time = death_t["heartbreak_bond_high_time"] | 0;
+        dt.heartbreak_last_bond     = death_t["heartbreak_last_bond"] | 0.0f;
+        dt.transcend_sustain_start  = death_t["transcend_sustain_start"] | 0;
+        dt.last_interaction_time    = death_t["last_interaction_time"] | 0;
+        Pet::Death::setTrackers(dt);
+    }
+
     return true;
 }
 
 bool saveVocabulary() {
-    // Vocabulary is stored as a JSON array of words
-    // The actual vocabulary is managed elsewhere; this provides the persistence interface
-    // For now, write an empty array if no vocabulary exists
     if (!HAL::SDStorage::fileExists(VOCAB_PATH)) {
         return HAL::SDStorage::writeFileString(VOCAB_PATH, "[]");
     }
@@ -190,7 +232,6 @@ bool loadVocabulary() {
     DeserializationError err = deserializeJson(doc, json);
     if (err) return false;
 
-    // Count vocabulary entries
     JsonArray arr = doc.as<JsonArray>();
     Pet::Internal::setVocabularySize((uint16_t)arr.size());
 
@@ -198,7 +239,6 @@ bool loadVocabulary() {
 }
 
 bool saveMilestones() {
-    // Milestones stored as JSON array of {type, timestamp, description}
     if (!HAL::SDStorage::fileExists(MILESTONES_PATH)) {
         return HAL::SDStorage::writeFileString(MILESTONES_PATH, "[]");
     }

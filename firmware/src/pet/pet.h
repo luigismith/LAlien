@@ -1,6 +1,6 @@
 /**
  * pet.h — Main pet state machine
- * Manages lifecycle: egg → 8 stages → death/transcendence
+ * Manages lifecycle: egg -> 8 stages -> death/transcendence
  * Author: Claude Code | Date: 2026-04-13
  */
 #pragma once
@@ -11,24 +11,24 @@ namespace Pet {
 
     enum class Stage : uint8_t {
         SYRMA = 0,       // egg
-        LALI_NA = 1,     // newborn
-        LALI_SHI = 2,    // infant
-        LALI_KO = 3,     // child
-        LALI_REN = 4,    // teen
+        LALI_NA = 1,     // newborn (larva)
+        LALI_SHI = 2,    // infant (pupa)
+        LALI_KO = 3,     // child (juvenile)
+        LALI_REN = 4,    // teen (adolescent)
         LALI_VOX = 5,    // adult
         LALI_MERE = 6,   // elder sage
-        LALI_THISHI = 7, // transcendence
+        LALI_THISHI = 7, // transcendent
     };
 
     enum class DeathType : uint8_t {
         NONE,
-        VELIN,           // despair
-        ZEVOL,           // disease
-        MORAK,           // trauma
-        RENA_THISHI,     // home calling (escape)
+        VELIN,           // despair / starvation / neglect
+        ZEVOL,           // disease / sickness
+        MORAK,           // trauma / heartbreak
+        RENA_THISHI,     // home calling / loneliness / boredom
         OLD_AGE,         // natural
         TRANSCENDENCE,   // best ending
-        FAREWELL,        // keeper changed API key
+        FAREWELL,        // keeper chose to say goodbye
     };
 
     /// Initialize pet system. Loads from SD or creates egg state.
@@ -40,14 +40,35 @@ namespace Pet {
     /// Handle IMU event (shake, tilt, impact).
     void handleIMUEvent(const HAL::IMUEvent& event);
 
+    /// Trigger keeper farewell (voluntary goodbye).
+    void triggerFarewell();
+
     // --- Accessors ---
     Stage getStage();
     const char* getStageName();
+    const char* getStageNameFor(Stage stage);
     DeathType getDeathType();
     bool isAlive();
     bool isEgg();
+    bool isTranscended();
     uint32_t getAgeHours();
+    uint32_t getAgeDays();
     const char* getName();
     uint8_t getDNAVariantIndex(); // for sprite selection
+
+    /// Get total interaction count (voice + touch + play).
+    uint32_t getTotalInteractions();
+
+    /// Get conversation count (for evolution checks).
+    uint16_t getConversationCount();
+
+    /// Increment conversation count (called by AI layer after a conversation).
+    void addConversation();
+
+    /// Get last words (set during death sequence, stored for graveyard).
+    const char* getLastWords();
+
+    /// Set last words (called by LLM response handler during death).
+    void setLastWords(const char* words);
 
 } // namespace Pet

@@ -421,5 +421,29 @@ String getTranscription() {
     return result;
 }
 
+bool isBusy() {
+    return s_state != STTState::IDLE &&
+           s_state != STTState::DONE &&
+           s_state != STTState::ERROR;
+}
+
+String getError() {
+    return s_error_text;
+}
+
+void reset() {
+    if (s_state == STTState::CONNECTING ||
+        s_state == STTState::SENDING ||
+        s_state == STTState::WAITING) {
+        s_client.stop();
+    }
+    s_state = STTState::IDLE;
+    s_transcription = "";
+    s_error_text = "";
+    s_response_raw = "";
+    s_audio_data = nullptr;
+    s_sample_count = 0;
+}
+
 } // namespace STTClient
 } // namespace AI

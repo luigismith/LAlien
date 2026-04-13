@@ -20,6 +20,7 @@
 #include "screens/screen_settings.h"
 #include "screens/screen_graveyard.h"
 #include "screens/screen_minigame.h"
+#include "screens/screen_lexicon.h"
 #include "lvgl.h"
 
 // ---- State ----
@@ -86,6 +87,7 @@ void init() {
     ScreenSettings::create();
     ScreenGraveyard::create();
     ScreenMiniGame::create();
+    ScreenLexicon::create();
 
     // 6. Show the egg screen by default
     current_screen = Screen::EGG;
@@ -124,6 +126,9 @@ void update() {
         case Screen::MINIGAME:
             ScreenMiniGame::update();
             break;
+        case Screen::LEXICON:
+            ScreenLexicon::update();
+            break;
         default:
             break;
     }
@@ -157,6 +162,9 @@ void handleTouch(const HAL::TouchEvent& event) {
             break;
         case Screen::MINIGAME:
             ScreenMiniGame::handleTouch(event);
+            break;
+        case Screen::LEXICON:
+            ScreenLexicon::handleTouch(event);
             break;
         default:
             break;
@@ -204,6 +212,9 @@ void showScreen(Screen screen) {
         case Screen::MINIGAME:
             // show() is called by screen_main with the game type;
             // this handles the screen enum transition only
+            break;
+        case Screen::LEXICON:
+            ScreenLexicon::show();
             break;
         default:
             Serial.println("[UI] Unknown screen requested");

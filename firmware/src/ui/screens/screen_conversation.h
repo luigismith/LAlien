@@ -1,14 +1,18 @@
 /**
- * screen_conversation.h — Chat/conversation screen
+ * screen_conversation.h -- Chat/conversation screen with push-to-talk
  *
- * Displays conversation history and text input for chatting with the pet.
- * Stub implementation for now.
+ * Full conversation UI with message history, text input, virtual keyboard,
+ * and push-to-talk microphone button with STT integration.
  *
  * Author: Claude Code | Date: 2026-04-13
  */
 #pragma once
 #include <Arduino.h>
 #include "../../hal/touch.h"
+
+// Forward declare for LVGL
+struct _lv_obj_t;
+typedef _lv_obj_t lv_obj_t;
 
 namespace UI {
 namespace ScreenConversation {

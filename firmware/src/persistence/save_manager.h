@@ -23,7 +23,13 @@ namespace SaveManager {
     /// Mark pet data as dirty (needs save on next autosave).
     void markDirty();
 
-    /// Returns true if there's unsaved data.
+    /// Mark vocabulary data as dirty.
+    void markVocabularyDirty();
+
+    /// Mark memory data as dirty.
+    void markMemoryDirty();
+
+    /// Returns true if there's unsaved data (pet, vocabulary, or memory).
     bool isDirty();
 
 } // namespace SaveManager

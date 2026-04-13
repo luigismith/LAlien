@@ -1,6 +1,7 @@
 /**
- * theme.h — Dark Mediterranean visual theme
+ * theme.h -- Dark Mediterranean visual theme
  * Deep black, gold accents, night blue, pet core color as highlight.
+ * Includes transition animations, button feedback, and loading spinner.
  * Author: Claude Code | Date: 2026-04-13
  */
 #pragma once
@@ -18,6 +19,19 @@ namespace Theme {
     static constexpr uint16_t DANGER_RED      = 0xF800;
     static constexpr uint16_t SUCCESS_GREEN   = 0x07E0;
 
+    // Screen transition duration (ms)
+    static constexpr uint32_t TRANSITION_MS   = 300;
+
+    // Button press scale animation duration (ms)
+    static constexpr uint32_t BTN_PRESS_MS    = 50;
+
+    // Consistent spacing constants (pixels)
+    static constexpr int16_t PAD_SMALL        = 4;
+    static constexpr int16_t PAD_MEDIUM       = 8;
+    static constexpr int16_t PAD_LARGE        = 16;
+    static constexpr int16_t PAD_XL           = 24;
+    static constexpr int16_t MARGIN_SCREEN    = 12;
+
     /// Initialize LVGL theme styles.
     void init();
 
@@ -26,6 +40,15 @@ namespace Theme {
 
     /// Get current pet highlight color.
     uint16_t getPetHighlight();
+
+    /// Show a loading spinner overlay on the active screen.
+    void showLoadingSpinner(const char* message = nullptr);
+
+    /// Hide the loading spinner overlay.
+    void hideLoadingSpinner();
+
+    /// Returns true if spinner is currently visible.
+    bool isLoadingVisible();
 
 } // namespace Theme
 } // namespace UI

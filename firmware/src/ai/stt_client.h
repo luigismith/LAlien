@@ -26,5 +26,14 @@ namespace STTClient {
     /// Returns true if STT is available (API key configured).
     bool isAvailable();
 
+    /// Returns true if a transcription is in progress.
+    bool isBusy();
+
+    /// Get the last error text (empty if no error).
+    String getError();
+
+    /// Reset the state machine to IDLE (e.g., after reading error).
+    void reset();
+
 } // namespace STTClient
 } // namespace AI
