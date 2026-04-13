@@ -1,0 +1,32 @@
+# Python
+tools/.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Arduino build
+firmware/build/
+*.elf
+*.bin
+*.hex
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets (never commit API keys)
+sd_card_template/certs/*.pem
+sd_card_template/certs/*.key
+
+# Generated sprites (large, regenerable)
+# sd_card_template/sprites/ — uncomment if too large for git
+
+# Logs
+docs/*.log

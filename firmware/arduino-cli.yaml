@@ -1,0 +1,6 @@
+board_manager:
+  additional_urls: []
+library:
+  enable_unsafe_install: false
+sketch:
+  always_export_binaries: false
