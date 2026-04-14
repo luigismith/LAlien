@@ -223,13 +223,34 @@ function bindActions() {
         document.getElementById('needs-overlay').classList.add('hidden');
     });
 
-    // Canvas click (for egg touching)
-    document.getElementById('game-canvas').addEventListener('click', (e) => {
-        if (Pet.isEgg() && Pet.isAlive()) {
+    // Canvas interactions via Interactions module (poke + pet gestures)
+    // Egg touch is now handled by the 'pet-poke' event
+    Events.on('pet-poke', () => {
+        if (!Pet.isAlive()) return;
+        if (Pet.isEgg()) {
             Pet.addTouchInteraction();
             SpeechBubble.show('...', 'neutral', 1000);
             Events.emit('pet-changed');
+        } else {
+            // Poke the hatched creature
+            Pet.addTouchInteraction();
+            const phrases = ['ko!', 'nashi?', 'thi!', 'kè?', 'la-ko!', 'shà!'];
+            const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+            SpeechBubble.show(phrase, Pet.getMood(), 1500);
+            Events.emit('pet-changed');
         }
+    });
+
+    Events.on('pet-pet', (data) => {
+        if (!Pet.isAlive() || Pet.isEgg()) return;
+        // Petting gesture detected: boost affection
+        Needs.caress(Pet.needs);
+        Pet.addTouchInteraction();
+        const phrases = ['la-shi... ♪', 'kesma thi ♥', 'mmm... vythì...', 'ko-shi thi!'];
+        const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+        SpeechBubble.show(phrase, 'happy', 2500);
+        DiaryGenerator.logMemory('caress', 'accarezzato dal custode');
+        Events.emit('pet-changed');
     });
 
     // Setup wizard
