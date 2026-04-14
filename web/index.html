@@ -23,6 +23,7 @@
             <span id="status-age"></span>
             <span id="status-cloud" class="offline" title="Sync server">&#9729;</span>
             <button id="btn-needs-expand" aria-label="Show needs">&#9776;</button>
+            <button id="btn-status-settings" class="btn-status-icon" data-action="settings" aria-label="Impostazioni" title="Impostazioni">&#9881;</button>
         </div>
     </div>
 
@@ -182,6 +183,10 @@
                 <button class="btn-back" id="btn-settings-back">&larr;</button>
                 <h2 id="settings-title-text">Impostazioni</h2>
             </div>
+            <div class="settings-group" id="settings-evolution-group">
+                <label>Prossima evoluzione</label>
+                <div id="settings-evolution-status">—</div>
+            </div>
             <div class="settings-group">
                 <label id="settings-lang-label">Lingua</label>
                 <select id="settings-language">
@@ -215,12 +220,20 @@
             </div>
             <div class="settings-group">
                 <label class="toggle-row">
+                    <input type="checkbox" id="settings-sfx-toggle" checked>
+                    <span>Audio ed effetti sonori</span>
+                </label>
+                <label class="toggle-row">
                     <input type="checkbox" id="settings-tts-toggle" checked>
                     <span>Voce del Lalìen (TTS)</span>
                 </label>
                 <label class="toggle-row">
                     <input type="checkbox" id="settings-tutorial-toggle" checked>
                     <span>Tutorial e suggerimenti</span>
+                </label>
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-notif-toggle">
+                    <span>Notifiche bisogni urgenti</span>
                 </label>
                 <button class="btn-small" id="btn-tutorial-reset">Rivedi tutti i suggerimenti</button>
             </div>

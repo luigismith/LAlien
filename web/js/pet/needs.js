@@ -92,7 +92,7 @@ function needsAvgExcludingHealth(state) {
 }
 
 export const Needs = {
-    decay(state, timeMult) {
+    decay(state, timeMult, stage = 0) {
         _gameTimeSeconds++;
 
         // Kora
@@ -119,15 +119,28 @@ export const Needs = {
         }
         addNeed(state, NeedType.NASHI, -nashiRate * timeMult);
 
-        // Health (derived)
+        // Health (derived from overall care). Converges toward the average
+        // of the other needs: good care → heals up; neglect → sickens.
         const othersAvg = needsAvgExcludingHealth(state);
-        if (othersAvg > 60) {
-            const healthTarget = othersAvg * 0.3;
-            if (state[NeedType.HEALTH] < healthTarget) {
-                addNeed(state, NeedType.HEALTH, 0.01 * timeMult);
+        const hp = state[NeedType.HEALTH];
+        if (othersAvg >= 70) {
+            // Good care → heal toward full, faster the worse you currently are
+            const gap = 100 - hp;
+            if (gap > 0) addNeed(state, NeedType.HEALTH, Math.min(gap, 0.020 * timeMult));
+        } else if (othersAvg >= 45) {
+            // Ok → heal gently toward othersAvg, or mild decay if already above it
+            if (hp < othersAvg) {
+                addNeed(state, NeedType.HEALTH, 0.008 * timeMult);
+            } else {
+                addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * 0.5 * timeMult);
             }
+        } else if (othersAvg >= 25) {
+            // Poor → steady decline
+            addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * timeMult);
+        } else {
+            // Severe neglect → accelerated illness
+            addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * 2.5 * timeMult);
         }
-        addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * timeMult);
 
         // Cognition
         addNeed(state, NeedType.COGNITION, -DECAY_COGNITION * timeMult);
@@ -140,8 +153,12 @@ export const Needs = {
         if (isRoutine()) curiosityRate += DECAY_CURIOSITY_ROUTINE;
         addNeed(state, NeedType.CURIOSITY, -curiosityRate * timeMult);
 
-        // Cosmic
-        addNeed(state, NeedType.COSMIC, -DECAY_COSMIC * timeMult);
+        // Cosmic — dormant before stage 6 (Lali-mere): no decay, self-heals to full
+        if (stage >= 6) {
+            addNeed(state, NeedType.COSMIC, -DECAY_COSMIC * timeMult);
+        } else if (state[NeedType.COSMIC] < 100) {
+            state[NeedType.COSMIC] = 100;
+        }
 
         // Security (recovers)
         if (state[NeedType.SECURITY] < 100) {

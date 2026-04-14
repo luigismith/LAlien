@@ -6,6 +6,7 @@ import { Needs, NeedType, createNeedsState } from './needs.js';
 import { Evolution } from './evolution.js';
 import { Death, DeathType } from './death.js';
 import { Events } from '../engine/events.js';
+import { Activity } from './activity.js';
 
 const STAGE_NAMES = [
     'Syrma', 'Lali-na', 'Lali-shi', 'Lali-ko',
@@ -82,6 +83,8 @@ export const Pet = {
         this.birthTimestamp = Date.now();
         this.lastRealTimestamp = Date.now();
         this.needs = createNeedsState();
+        this.activity = null;   // initialized by Activity.init
+        Activity.init(this);
         this.voiceInteractions = 0;
         this.touchInteractions = 0;
         this.playInteractions = 0;
@@ -123,7 +126,12 @@ export const Pet = {
         }
 
         this.ageSeconds += Math.floor(timeMultiplier);
-        Needs.decay(this.needs, timeMultiplier);
+
+        // Activity system (sleeping, eating...) runs first — may modify needs
+        // and returns a decay multiplier (e.g. sleep slows decay to 0.35×).
+        Activity.tick(this);
+        const actMult = Activity.getDecayMultiplier(this);
+        Needs.decay(this.needs, timeMultiplier * actMult, this.stage);
 
         // Pathological tracking
         if (Needs.isMorak(this.needs)) {
@@ -355,6 +363,7 @@ export const Pet = {
             lastWords: this.lastWords,
             deathTrackers: Death.serializeTrackers(),
             needsGameTime: Needs.getGameTimeSeconds(),
+            activity: this.activity || null,
         };
     },
 
@@ -403,5 +412,10 @@ export const Pet = {
         Death.init();
         Death.restoreTrackers(data.deathTrackers);
         Needs.setGameTimeSeconds(data.needsGameTime ?? 0);
+
+        // Activity state (survives refresh)
+        this.activity = data.activity || null;
+        Activity.init(this);
+        Activity.resume(this);
     },
 };

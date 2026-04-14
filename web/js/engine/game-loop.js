@@ -22,6 +22,10 @@ import { DiaryGenerator } from '../ai/diary-generator.js';
 import { CloudSync } from './cloud-sync.js';
 import { Tutorial } from '../ui/tutorial.js';
 import { SoundEngine } from '../audio/sound-engine.js';
+import { Gestures } from '../ui/gestures.js';
+import { Notifications } from '../ui/notifications.js';
+import { Activity } from '../pet/activity.js';
+import { Autonomy } from '../pet/autonomy.js';
 
 // Re-export Events for backward compatibility
 export { Events };
@@ -123,9 +127,11 @@ function renderLoop() {
 // ---------------------------------------------------------------------------
 function handleResize() {
     const canvas = document.getElementById('game-canvas');
-    const statusH = 40;
+    const statusBar = document.getElementById('status-bar');
+    const statusH = statusBar ? statusBar.offsetHeight : 48;
+    // Action bar is now hidden; chips in the status bar carry the interactions
     const actionBar = document.getElementById('action-bar');
-    const actionH = actionBar ? actionBar.offsetHeight : 70;
+    const actionH = (actionBar && actionBar.offsetParent !== null) ? actionBar.offsetHeight : 0;
     const availH = window.innerHeight - statusH - actionH;
     const availW = window.innerWidth;
 
@@ -137,6 +143,7 @@ function handleResize() {
     canvas.height = h;
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
+    canvas.style.top = statusH + 'px';
 
     Renderer.setScale(1, 1);
 }
@@ -261,6 +268,15 @@ async function resumeAfterLogin(serverOnline) {
     Tutorial.init();
     setTimeout(() => Tutorial.trigger('start'), 600);
 
+    // Natural gestures: drag-to-action + shake-to-play
+    Gestures.init();
+
+    // Local OS notifications for urgent needs (fires only when tab is hidden)
+    Notifications.init();
+
+    // Autonomous behavior: spontaneous speech, motion, desires
+    Autonomy.init();
+
     // If pet is egg, show egg screen
     if (Pet.isEgg()) {
         GameState.currentScreen = 'egg';
@@ -294,6 +310,12 @@ function bindActions() {
             const action = btn.dataset.action;
             handleAction(action);
         });
+    });
+
+    // Settings gear in the top status bar (primary entry point now that
+    // the bottom action bar is hidden).
+    document.getElementById('btn-status-settings')?.addEventListener('click', () => {
+        handleAction('settings');
     });
 
     // Needs overlay
@@ -356,9 +378,27 @@ function handleAction(action) {
         return;
     }
 
+    // Activity gate — sleeping/eating may reject or interrupt
+    const verdict = Activity.onAction(Pet, action);
+    if (!verdict.accept) {
+        if (verdict.reason) showToast(verdict.reason);
+        if (verdict.woke) {
+            SoundEngine.playPoke();
+            SpeechBubble.show('sha... moko?', Pet.getMood(), 2000);
+            Events.emit('pet-changed');
+        }
+        return;
+    }
+
     switch (action) {
         case 'feed':
-            Needs.feed(Pet.needs);
+            // Overfeed guard: reject when already very full
+            if (Pet.needs[NeedType.KORA] > 85) {
+                SpeechBubble.show('ko sha... shai', 'neutral', 1800);
+                showToast('Ne ha avuto abbastanza per ora.');
+                return;
+            }
+            Activity.start(Pet, Activity.Type.EATING);
             SoundEngine.playFeed();
             SpeechBubble.show('ko-ra... thi!', Pet.getMood(), 2000);
             Pet.recordAction(1);
@@ -366,11 +406,11 @@ function handleAction(action) {
             Events.emit('pet-changed');
             break;
         case 'sleep':
-            Needs.sleep(Pet.needs);
+            Activity.start(Pet, Activity.Type.SLEEPING);
             SoundEngine.playSleep();
-            SpeechBubble.show('mo-ko...', Pet.getMood(), 2000);
+            SpeechBubble.show('mo-ko... thi...', Pet.getMood(), 2000);
             Pet.recordAction(2);
-            DiaryGenerator.logMemory('sleep', 'messo a dormire');
+            DiaryGenerator.logMemory('sleep', 'si è addormentato');
             Events.emit('pet-changed');
             break;
         case 'clean':
@@ -416,29 +456,22 @@ function handleAction(action) {
 // ---------------------------------------------------------------------------
 // Action button urgency (highlight buttons based on critical needs)
 // ---------------------------------------------------------------------------
-const ACTION_NEED_MAP = [
-    ['btn-feed',     [0]],          // KORA - hunger
-    ['btn-sleep',    [1]],          // MOKO - rest
-    ['btn-clean',    [2]],          // MISKA - hygiene
-    ['btn-play',     [3, 7]],       // NASHI + CURIOSITY
-    ['btn-talk',     [5, 7]],       // COGNITION + CURIOSITY
-    ['btn-caress',   [6, 9]],       // AFFECTION + SECURITY
-    ['btn-meditate', [8]],          // COSMIC
-];
-
 function updateActionUrgency() {
     const alive = Pet.isAlive();
     const egg   = Pet.isEgg();
+    const stage = Pet.getStage();
     let anyCritical = false;
-    for (const [id, indices] of ACTION_NEED_MAP) {
-        const btn = document.getElementById(id);
-        if (!btn) continue;
-        btn.classList.remove('urgent', 'low', 'satisfied');
-        if (!alive || egg) continue;
-        const minVal = Math.min(...indices.map(i => Pet.needs[i]));
-        if (minVal < 20)      { btn.classList.add('urgent'); anyCritical = true; }
-        else if (minVal < 40) btn.classList.add('low');
-        else if (minVal > 70) btn.classList.add('satisfied');
+    // Hide COSMIC chip before stage 6 (meditation is dormant)
+    const cosmicChip = document.querySelector('#status-needs-dots .need-chip[data-action="meditate"]');
+    if (cosmicChip) cosmicChip.classList.toggle('hidden', stage < 6);
+    // Count critical needs (for sound alert). Chips already visualize
+    // their own level via status-bar.js; no per-button class mutation needed.
+    if (alive && !egg) {
+        const skipCosmic = stage < 6;
+        for (let i = 0; i < Pet.needs.length; i++) {
+            if (skipCosmic && i === 8) continue;  // COSMIC dormant
+            if (Pet.needs[i] < 20) { anyCritical = true; break; }
+        }
     }
     // Critical-need ambient alert: subtle recurring pulse when anything is < 20
     if (alive && !egg && anyCritical) {
@@ -478,6 +511,49 @@ Events.on('death', (data) => {
 
 Events.on('pet-poke', () => SoundEngine.playPoke());
 Events.on('pet-pet',  () => SoundEngine.playCaress(1));
+
+// Autonomy: unsolicited lines and fulfillment events
+Events.on('autonomy-speak', (ev) => {
+    if (!ev || !ev.line) return;
+    SpeechBubble.show(ev.line, ev.mood || 'neutral', 3000);
+});
+Events.on('autonomy-desire-fulfilled', (d) => {
+    SpeechBubble.show('ko! thi custode… la-shi', 'happy', 2500);
+    SoundEngine.playSuccess && SoundEngine.playSuccess();
+});
+Events.on('autonomy-desire-expire', () => {
+    // Silent expiration; minor sad flavour
+    SpeechBubble.show('sha…', 'sad', 1500);
+});
+
+// Activity lifecycle: speak a line on exit
+Events.on('activity-end', (ev) => {
+    if (!ev) return;
+    if (ev.from === 'SLEEPING') {
+        if (ev.grumpy) {
+            SpeechBubble.show('sha... moko...', 'sad', 2500);
+            SoundEngine.playPoke();
+        } else if (ev.reason === 'duration' || ev.reason === 'auto') {
+            SpeechBubble.show('ko... thi, custode', 'happy', 2500);
+            SoundEngine.playClick();
+        }
+    } else if (ev.from === 'EATING' && (ev.reason === 'duration' || ev.reason === 'auto')) {
+        SpeechBubble.show('ko-ra... thi!', 'happy', 2000);
+    }
+    Events.emit('pet-changed');
+});
+
+// ---- Natural gestures → actions ----
+Events.on('gesture-action', ({ action }) => handleAction(action));
+Events.on('gesture-shake',  () => {
+    if (!Pet.isAlive() || Pet.isEgg()) return;
+    SoundEngine.playClick();
+    handleAction('play');
+});
+Events.on('pet-scrub', () => {
+    if (!Pet.isAlive() || Pet.isEgg()) return;
+    handleAction('clean');
+});
 
 // ---------------------------------------------------------------------------
 // Setup wizard logic
@@ -709,18 +785,24 @@ document.addEventListener('visibilitychange', () => {
         }
     } else {
         GameState.paused = false;
-        // Calculate elapsed real time and advance game time
+        // Calculate elapsed real time and advance game time.
+        // Two separate caps:
+        //   - Age always accumulates (up to 30 real days — enough for a long vacation)
+        //   - Needs decay is capped to 24 game hours, so a week away doesn't instakill
         if (GameState.initialized && Pet.isAlive()) {
             const now = Date.now();
             const lastSave = Pet.lastRealTimestamp || now;
-            const elapsedMs = now - lastSave;
-            const elapsedGameSeconds = Math.floor((elapsedMs / 1000) * GameState.timeMultiplier);
-            if (elapsedGameSeconds > 0 && elapsedGameSeconds < 86400) {
-                // Fast-forward needs decay (cap at 24h)
-                for (let i = 0; i < Math.min(elapsedGameSeconds, 3600); i++) {
-                    Needs.decay(Pet.needs, 1);
-                    Pet.ageSeconds++;
-                }
+            const elapsedMs = Math.max(0, now - lastSave);
+            const REAL_CAP_SEC  = 30 * 24 * 3600;   // 30 days of real time max
+            const DECAY_CAP_SEC = 24 * 3600;        // at most 24 game hours of decay
+            const elapsedReal = Math.min(Math.floor(elapsedMs / 1000), REAL_CAP_SEC);
+            const elapsedGameSeconds = Math.floor(elapsedReal * GameState.timeMultiplier);
+            if (elapsedGameSeconds > 0) {
+                // Age advances in full
+                Pet.ageSeconds += elapsedGameSeconds;
+                // Decay applies in a single call with the cumulative multiplier
+                const decayAmount = Math.min(elapsedGameSeconds, DECAY_CAP_SEC);
+                Needs.decay(Pet.needs, decayAmount, Pet.stage);
                 Pet.lastRealTimestamp = now;
                 Events.emit('pet-changed');
             }

@@ -40,7 +40,8 @@ function getLanguageName(code) {
 }
 
 export const SystemPrompt = {
-    build() {
+    /** @param {{score:number,bucket:string,confidence:number}} [sentiment] */
+    build(sentiment) {
         let prompt = '';
 
         // [CORE_IDENTITY]
@@ -98,7 +99,27 @@ export const SystemPrompt = {
         const discovered = AlienLexicon.getDiscoveredWords();
         if (discovered.length > 0) {
             prompt += `[VOCABULARY_ACQUIRED]\n`;
-            prompt += `Words you have learned: ${discovered.slice(-20).map(w => w.word).join(', ')}.\n\n`;
+            const taught = discovered.filter(w => w.source === 'keeper').map(w => w.word);
+            const spoken = discovered.filter(w => w.source !== 'keeper').map(w => w.word);
+            prompt += `Words you have learned: ${discovered.slice(-20).map(w => w.word).join(', ')}.\n`;
+            if (taught.length) {
+                prompt += `Your keeper has TAUGHT you these words (use them warmly, they are a gift): ${taught.slice(-10).join(', ')}.\n`;
+            }
+            if (spoken.length) {
+                prompt += `You first spoke these yourself: ${spoken.slice(-10).join(', ')}.\n`;
+            }
+            prompt += '\n';
+        }
+
+        // [KEEPER_TONE] — injected when sentiment is not neutral
+        if (sentiment && sentiment.confidence > 0.2 && sentiment.bucket !== 'neutral') {
+            prompt += `[KEEPER_TONE]\n`;
+            if (sentiment.bucket === 'positive') {
+                prompt += `Your keeper is speaking to you with warmth and kindness right now. You feel loved, calm, seen.\n`;
+            } else {
+                prompt += `Your keeper sounds harsh or distant right now. You feel uncertain, a little small. Do not argue back — respond with gentle confusion or quiet sadness, but stay loyal.\n`;
+            }
+            prompt += '\n';
         }
 
         // [USER_LANGUAGE]

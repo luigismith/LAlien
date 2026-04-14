@@ -8,6 +8,8 @@ import { NeedType } from '../pet/needs.js';
 import { Needs } from '../pet/needs.js';
 import { Evolution } from '../pet/evolution.js';
 import { Interactions } from './interactions.js';
+import { Activity } from '../pet/activity.js';
+import { Autonomy } from '../pet/autonomy.js';
 
 let _canvas, _ctx;
 let _scaleX = 1, _scaleY = 1;
@@ -283,7 +285,82 @@ function drawBackground(ctx, w, h, tick, pet) {
 // ---------------------------------------------------------------------------
 // Needs visual manifestation
 // ---------------------------------------------------------------------------
+// Strip of big labeled icons above the pet, one per critically low need.
+// Designed to be immediately readable at a glance — no ambiguous particles.
+function drawNeedsBanner(ctx, pet, cx, cy, bodyW, bodyH, tick) {
+    const needs = pet.needs;
+    // Only show truly urgent ones (<30); warn level (<50) uses faded icon
+    const items = [];
+    const defs = [
+        { i: 0, icon: '🍎', name: 'Fame',       color: '#E07030' },
+        { i: 1, icon: '💤', name: 'Stanco',    color: '#6A5AAA' },
+        { i: 2, icon: '💧', name: 'Sporco',    color: '#8EC8E0' },
+        { i: 3, icon: '😢', name: 'Triste',    color: '#E0C070' },
+        { i: 4, icon: '❤',  name: 'Malato',    color: '#E04848' },
+        { i: 5, icon: '🧠', name: 'Apatico',   color: '#C06BC0' },
+        { i: 6, icon: '🫂', name: 'Solo',      color: '#E06AA0' },
+        { i: 7, icon: '👁', name: 'Annoiato',  color: '#60E0E0' },
+        { i: 8, icon: '✨', name: 'Cosmico',   color: '#E0C848' },
+        { i: 9, icon: '🛡', name: 'Impaurito', color: '#A070C0' },
+    ];
+    for (const d of defs) {
+        const v = needs[d.i];
+        if (v < 50) {
+            const severity = v < 20 ? 'crit' : v < 35 ? 'warn' : 'mild';
+            items.push({ ...d, v, severity });
+        }
+    }
+    if (!items.length) return;
+    // Sort by severity (lowest first)
+    items.sort((a, b) => a.v - b.v);
+    // Show at most 4 to avoid clutter
+    const shown = items.slice(0, 4);
+
+    const iconW = 42;
+    const gap = 8;
+    const totalW = shown.length * iconW + (shown.length - 1) * gap;
+    const startX = cx - totalW / 2 + iconW / 2;
+    const y = cy - bodyH - 56;
+
+    for (let k = 0; k < shown.length; k++) {
+        const it = shown[k];
+        const x = startX + k * (iconW + gap);
+        // Background pill
+        const pulse = it.severity === 'crit' ? (Math.sin(tick * 0.12) * 0.5 + 0.5) : 0;
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = 'rgba(10,25,41,0.88)';
+        ctx.strokeStyle = it.severity === 'crit'
+            ? `rgba(224,72,72,${0.6 + pulse * 0.4})`
+            : (it.severity === 'warn' ? 'rgba(224,200,72,0.7)' : 'rgba(212,165,52,0.4)');
+        ctx.lineWidth = it.severity === 'crit' ? 2.2 : 1.5;
+        const r = 10;
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(x - iconW / 2, y - 18, iconW, 36, r) : ctx.rect(x - iconW / 2, y - 18, iconW, 36);
+        ctx.fill();
+        ctx.stroke();
+        // Icon
+        ctx.globalAlpha = 1;
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = it.color;
+        ctx.shadowBlur = it.severity === 'crit' ? 12 : 4;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(it.icon, x, y - 1);
+        // Label under
+        ctx.shadowBlur = 2;
+        ctx.shadowColor = '#000';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = it.severity === 'crit' ? '#E04848' : '#E0C070';
+        ctx.fillText(it.name, x, y + 14);
+        ctx.restore();
+    }
+}
+
 function drawNeedsIndicators(ctx, pet, cx, cy, bodyW, bodyH, tick) {
+    // Clear labeled strip first (most legible layer)
+    drawNeedsBanner(ctx, pet, cx, cy, bodyW, bodyH, tick);
     const needs = pet.needs;
 
     // === HUNGER (kòra) < 40: floating food thought ===
@@ -842,6 +919,108 @@ function drawDeathSequence(ctx, pet, cx, cy, tick) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Activity overlays — big, readable cues on top of the pet
+// ---------------------------------------------------------------------------
+function drawActivityOverlay(ctx, pet, cx, cy, tick) {
+    const type = Activity.getType(pet);
+    if (type === 'SLEEPING') {
+        // Big animated Z's rising from the head
+        const headY = cy - 70;
+        for (let i = 0; i < 3; i++) {
+            const phase = (tick * 0.015 + i * 1.7) % (Math.PI * 2);
+            const t = (tick * 0.4 + i * 40) % 120;
+            const zx = cx + 24 + Math.sin(phase) * 10 + i * 10;
+            const zy = headY - t;
+            const life = 1 - t / 120;
+            if (life <= 0) continue;
+            ctx.save();
+            ctx.globalAlpha = life * 0.95;
+            ctx.fillStyle = '#8AB4FF';
+            ctx.font = `bold ${14 + i * 6}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.shadowColor = '#4A6AE0';
+            ctx.shadowBlur = 6;
+            ctx.fillText('Z', zx, zy);
+            ctx.restore();
+        }
+        // "DORMENDO" label
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = 'rgba(74,106,224,0.92)';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('· DORMENDO ·', cx, cy + 90);
+        ctx.restore();
+    } else if (type === 'EATING') {
+        // Food sparkles orbiting near mouth
+        for (let i = 0; i < 6; i++) {
+            const ang = tick * 0.06 + i * (Math.PI * 2 / 6);
+            const r = 32 + Math.sin(tick * 0.08 + i) * 4;
+            const px = cx + Math.cos(ang) * r;
+            const py = cy + 10 + Math.sin(ang) * r * 0.5;
+            ctx.save();
+            ctx.globalAlpha = 0.8;
+            ctx.fillStyle = '#E07030';
+            ctx.beginPath();
+            ctx.arc(px, py, 3 + Math.sin(tick * 0.15 + i) * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        // Chewing label
+        ctx.save();
+        ctx.fillStyle = '#E07030';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = 0.9;
+        ctx.fillText('· KORA ·', cx, cy + 90);
+        ctx.restore();
+    }
+}
+
+// Small thought-bubble icon above the pet, with label
+function drawDesireBubble(ctx, cx, cy, tick, desire) {
+    const bx = cx + 70 + Math.sin(tick * 0.03) * 3;
+    const by = cy - 90;
+    const pulse = 1 + Math.sin(tick * 0.06) * 0.05;
+
+    ctx.save();
+    // Small connecting circles
+    ctx.fillStyle = 'rgba(10,25,41,0.88)';
+    ctx.strokeStyle = 'rgba(212,165,52,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx + 36, cy - 48, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 48, cy - 62, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    // Main bubble
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = 'rgba(10,25,41,0.94)';
+    ctx.strokeStyle = '#D4A534';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 36, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Icon
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(desire.icon, 0, 0);
+    ctx.restore();
+
+    // Label under bubble
+    ctx.fillStyle = '#D4A534';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText(desire.label, bx, by + 40);
+    ctx.restore();
+}
+
 export const Renderer = {
     setScale(sx, sy) { _scaleX = sx; _scaleY = sy; },
 
@@ -866,16 +1045,33 @@ export const Renderer = {
         // Background with ground
         const groundY = drawBackground(_ctx, w, h, _tick, pet);
 
-        // Pet vertical position: sit on the ground
-        const cy = pet.isEgg() ? h * 0.4 : groundY - 30 - (pet.stage * 5);
+        // Autonomous motion (smooth lerp); applied as offset to the pet position
+        Autonomy.updateMotion();
+        const mo = pet.motion || { offsetX: 0, offsetY: 0, bob: 0, scaleBoost: 0 };
+
+        // Pet vertical position: sit on the ground (+autonomous motion)
+        const baseCy = pet.isEgg() ? h * 0.4 : groundY - 30 - (pet.stage * 5);
+        const liveCx = cx + (mo.offsetX || 0);
+        const liveCy = baseCy + (mo.offsetY || 0) + (mo.bob || 0);
 
         // Draw pet
         if (!pet.isAlive()) {
-            drawDeathSequence(_ctx, pet, cx, cy, _tick);
+            drawDeathSequence(_ctx, pet, liveCx, liveCy, _tick);
         } else if (pet.isEgg()) {
-            drawEgg(_ctx, cx, cy, _tick, pet);
+            drawEgg(_ctx, liveCx, liveCy, _tick, pet);
         } else {
-            drawCreature(_ctx, pet, cx, cy, _tick);
+            drawCreature(_ctx, pet, liveCx, liveCy, _tick);
+        }
+
+        // Activity overlays (Zzz while sleeping, food particles while eating, etc.)
+        if (pet.isAlive() && !pet.isEgg()) {
+            drawActivityOverlay(_ctx, pet, liveCx, liveCy, _tick);
+        }
+
+        // Desire bubble (autonomous request)
+        const desire = Autonomy.getCurrentDesire ? Autonomy.getCurrentDesire() : null;
+        if (desire && pet.isAlive() && !pet.isEgg()) {
+            drawDesireBubble(_ctx, liveCx, liveCy, _tick, desire);
         }
 
         // Interaction particles (hearts, ripples)

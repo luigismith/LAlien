@@ -51,23 +51,56 @@ export const AlienLexicon = {
         return _discovered.has(word.toLowerCase());
     },
 
-    discover(word) {
+    /**
+     * Mark a word as discovered.
+     * @param {string} word
+     * @param {'pet'|'keeper'} [source='pet']  who taught it — pet's own utterance or keeper's input
+     */
+    discover(word, source = 'pet') {
         const lower = word.toLowerCase();
         if (_discovered.has(lower)) return false;
         _discovered.add(lower);
-        _discoveredList.push({ word: lower, discoveredAt: Date.now() });
+        _discoveredList.push({ word: lower, discoveredAt: Date.now(), source });
         return true;
     },
 
-    tryDiscover(word) {
+    tryDiscover(word, source = 'pet') {
         // Check if word matches any alien word
         const lower = word.toLowerCase();
         const match = _allWords.find(w => w.word.toLowerCase() === lower);
         if (match && !_discovered.has(lower)) {
-            this.discover(lower);
+            this.discover(lower, source);
             return true;
         }
         return false;
+    },
+
+    /**
+     * Scan arbitrary text and discover every alien word found.
+     * @param {string} text
+     * @param {'pet'|'keeper'} source
+     * @returns {string[]} list of newly discovered words
+     */
+    discoverFromText(text, source = 'pet') {
+        if (!text || !_allWords.length) return [];
+        const lower = text.toLowerCase();
+        const found = [];
+        for (const entry of _allWords) {
+            const w = entry.word.toLowerCase();
+            if (_discovered.has(w)) continue;
+            // Word-boundary match — handles Italian punctuation decently
+            const re = new RegExp('(^|[^a-z\u00c0-\u017f])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z\u00c0-\u017f])', 'i');
+            if (re.test(lower)) {
+                this.discover(w, source);
+                found.push(w);
+            }
+        }
+        return found;
+    },
+
+    /** How many words were taught by the keeper (bidirectional metric) */
+    getTaughtCount() {
+        return _discoveredList.filter(e => e.source === 'keeper').length;
     },
 
     restoreDiscovered(data) {

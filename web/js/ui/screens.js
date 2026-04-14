@@ -10,6 +10,7 @@ import { LLMClient } from '../ai/llm-client.js';
 import { SystemPrompt } from '../ai/system-prompt.js';
 import { STTClient } from '../ai/stt-client.js';
 import { DiaryGenerator } from '../ai/diary-generator.js';
+import { Sentiment } from '../ai/sentiment.js';
 import { I18n } from '../i18n/i18n.js';
 import { AlienLexicon } from '../i18n/alien-lexicon.js';
 import { Persistence } from '../engine/persistence.js';
@@ -164,6 +165,30 @@ export const Screens = {
 
             this._addMessage(text, 'user');
 
+            // --- Sentiment: nudge mood based on how the keeper is talking ---
+            const sent = Sentiment.analyze(text);
+            if (sent.confidence > 0.15) {
+                const mag = sent.score * sent.confidence;  // [-1, +1]
+                // Positive words lift NASHI + AFFECTION; harsh words hurt them
+                // Magnitude tuned so a warm message gives ~+4 to NASHI, ~+3 to AFFECTION
+                Pet.needs[NeedType.NASHI]     = Math.max(0, Math.min(100, Pet.needs[NeedType.NASHI]     + mag * 6));
+                Pet.needs[NeedType.AFFECTION] = Math.max(0, Math.min(100, Pet.needs[NeedType.AFFECTION] + mag * 5));
+                // Harsh words also scare the pet a little (reduce SECURITY)
+                if (sent.bucket === 'negative') {
+                    Pet.needs[NeedType.SECURITY] = Math.max(0, Pet.needs[NeedType.SECURITY] + mag * 3);
+                }
+            }
+
+            // --- Bidirectional vocabulary: if keeper uses an alien word, pet LEARNS it ---
+            const taught = AlienLexicon.discoverFromText(text, 'keeper');
+            if (taught.length) {
+                // Subtle knowledge boost: teaching the pet stimulates its mind
+                Pet.needs[NeedType.COGNITION] = Math.min(100, Pet.needs[NeedType.COGNITION] + 3 * taught.length);
+                Pet.needs[NeedType.CURIOSITY] = Math.min(100, Pet.needs[NeedType.CURIOSITY] + 2 * taught.length);
+                DiaryGenerator.logMemory('taught', `keeper insegna: ${taught.join(', ')}`);
+                showToast(`${Pet.getName()} ha imparato da te: ${taught.join(', ')}`, 4000);
+            }
+
             if (!LLMClient.isAvailable()) {
                 this._addMessage(I18n.get('chat_aphasia'), 'system');
                 return;
@@ -174,7 +199,7 @@ export const Screens = {
             SoundEngine.playThinking();
 
             try {
-                const prompt = SystemPrompt.build();
+                const prompt = SystemPrompt.build(sent);
                 const response = await LLMClient.chat(prompt, text);
 
                 // Remove thinking indicator
@@ -417,11 +442,46 @@ export const Screens = {
             localStorage.setItem('lalien_time_mult', GameState.timeMultiplier);
         });
 
+        // SFX master toggle (all Web Audio sounds)
+        document.getElementById('settings-sfx-toggle')?.addEventListener('change', (e) => {
+            SoundEngine.setEnabled(e.target.checked);
+            if (e.target.checked) {
+                try { SoundEngine.resume && SoundEngine.resume(); } catch (_) {}
+                SoundEngine.playToggle(true);
+            }
+            showToast(e.target.checked ? 'Audio attivato' : 'Audio disattivato');
+        });
+
         // TTS toggle
         document.getElementById('settings-tts-toggle')?.addEventListener('change', (e) => {
             SoundEngine.playToggle(e.target.checked);
             import('./speech-bubble.js').then(m => m.SpeechBubble.setTTSEnabled(e.target.checked));
             showToast(e.target.checked ? 'Voce attivata' : 'Voce disattivata');
+        });
+
+        // Notifications toggle — requires user permission
+        document.getElementById('settings-notif-toggle')?.addEventListener('change', async (e) => {
+            const wanted = e.target.checked;
+            SoundEngine.playToggle(wanted);
+            const { Notifications } = await import('./notifications.js');
+            const res = await Notifications.setEnabled(wanted);
+            if (wanted) {
+                if (res.ok) {
+                    showToast('Notifiche attive. Ti avviso quando ha bisogno.');
+                    Notifications.test();
+                } else {
+                    e.target.checked = false;
+                    if (res.reason === 'denied') {
+                        showToast('Permesso negato. Attiva le notifiche dalle impostazioni del browser.');
+                    } else if (res.reason === 'unsupported') {
+                        showToast('Notifiche non supportate su questo browser.');
+                    } else {
+                        showToast('Permesso non concesso.');
+                    }
+                }
+            } else {
+                showToast('Notifiche disattivate');
+            }
         });
 
         // Tutorial toggle
@@ -489,10 +549,47 @@ export const Screens = {
 
         document.getElementById('settings-time-mult').value = String(GameState.timeMultiplier);
 
+        // Evolution status — show next-stage blockers if any
+        try {
+            const { Evolution } = await import('../pet/evolution.js');
+            const evBox = document.getElementById('settings-evolution-status');
+            if (evBox) {
+                if (!Pet.isAlive()) {
+                    evBox.innerHTML = '<span class="evo-dead">Il Lalìen non è più con noi.</span>';
+                } else if (Pet.getStage() >= 7) {
+                    evBox.innerHTML = '<span class="evo-done">Stadio trascendente raggiunto.</span>';
+                } else {
+                    const blockers = Evolution.getBlockers(
+                        Pet.getStage(), Pet.getAgeHours(), Pet.needs,
+                        Pet.touchInteractions || 0, Pet.voiceInteractions || 0,
+                        Pet.vocabularySize || 0, Pet.conversations || 0, Pet.diaryEntries || 0
+                    );
+                    if (!blockers.length) {
+                        evBox.innerHTML = '<span class="evo-ready">Pronto ad evolvere! Apparirà al prossimo tick.</span>';
+                    } else {
+                        evBox.innerHTML = '<ul class="evo-list">' + blockers.map(b =>
+                            `<li><span class="evo-label">${b.label}</span><span class="evo-values"><b>${b.have}</b> / ${b.need}</span></li>`
+                        ).join('') + '</ul>';
+                    }
+                }
+            }
+        } catch (e) { /* non-critical */ }
+
+        const sfxEl = document.getElementById('settings-sfx-toggle');
+        if (sfxEl) sfxEl.checked = SoundEngine.isEnabled();
         const ttsEl = document.getElementById('settings-tts-toggle');
         if (ttsEl) ttsEl.checked = localStorage.getItem('lalien_tts_enabled') !== '0';
         const tutEl = document.getElementById('settings-tutorial-toggle');
         if (tutEl) tutEl.checked = localStorage.getItem('lalien_tutorial_enabled') !== '0';
+        const notifEl = document.getElementById('settings-notif-toggle');
+        if (notifEl) {
+            const { Notifications } = await import('./notifications.js');
+            notifEl.checked = Notifications.isEnabled() && Notifications.permission() === 'granted';
+            if (Notifications.permission() === 'denied') {
+                notifEl.disabled = true;
+                notifEl.parentElement.title = 'Notifiche bloccate dal browser — attivale dalle impostazioni del sito';
+            }
+        }
     },
 
     // ---- Minigames ----

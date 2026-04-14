@@ -60,6 +60,42 @@ export const Evolution = {
         return { minAgeHours: 99999, minAvgNeeds: 100, minTouch: 9999, minVoice: 9999, minVocab: 9999, minConvs: 9999, minDiary: 255, minBond: 100, minCosmic: 100, needsSustain: true };
     },
 
+    /**
+     * List of unmet requirements for the next evolution.
+     * @returns {{label:string, have:string, need:string}[]}
+     */
+    getBlockers(currentStage, ageHours, needs, touchInteractions, voiceInteractions, vocabSize, conversations, diaryEntries) {
+        if (currentStage >= REQUIREMENTS.length) return [{ label: 'Stadio massimo raggiunto', have: '—', need: '—' }];
+        const req = REQUIREMENTS[currentStage];
+        const blockers = [];
+        if (ageHours < req.minAgeHours)      blockers.push({ label: 'Età',             have: `${ageHours}h`,          need: `${req.minAgeHours}h` });
+        const avg = Needs.getOverallWellness(needs);
+        if (req.minAvgNeeds > 0 && avg < req.minAvgNeeds)
+            blockers.push({ label: 'Benessere medio',    have: `${Math.round(avg)}%`,   need: `${req.minAvgNeeds}%` });
+        if (req.minTouch > 0 && touchInteractions < req.minTouch)
+            blockers.push({ label: 'Tocchi',             have: `${touchInteractions}`,  need: `${req.minTouch}` });
+        if (req.minVoice > 0 && voiceInteractions < req.minVoice)
+            blockers.push({ label: 'Interazioni vocali', have: `${voiceInteractions}`,  need: `${req.minVoice}` });
+        if (req.minVocab > 0 && vocabSize < req.minVocab)
+            blockers.push({ label: 'Parole aliene',      have: `${vocabSize}`,          need: `${req.minVocab}` });
+        if (req.minConvs > 0 && conversations < req.minConvs)
+            blockers.push({ label: 'Conversazioni',      have: `${conversations}`,      need: `${req.minConvs}` });
+        if (req.minDiary > 0 && diaryEntries < req.minDiary)
+            blockers.push({ label: 'Pagine di diario',   have: `${diaryEntries}`,       need: `${req.minDiary}` });
+        if (req.minBond > 0 && needs[NeedType.AFFECTION] < req.minBond)
+            blockers.push({ label: 'Affetto',            have: `${Math.round(needs[NeedType.AFFECTION])}%`, need: `${req.minBond}%` });
+        if (req.minCosmic > 0 && needs[NeedType.COSMIC] < req.minCosmic)
+            blockers.push({ label: 'Cosmico',            have: `${Math.round(needs[NeedType.COSMIC])}%`,    need: `${req.minCosmic}%` });
+        if (req.needsSustain) {
+            for (let i = 0; i < NeedType.COUNT; i++) {
+                if (needs[i] < req.minAvgNeeds) {
+                    blockers.push({ label: `Bisogno ${i}`, have: `${Math.round(needs[i])}%`, need: `${req.minAvgNeeds}%` });
+                }
+            }
+        }
+        return blockers;
+    },
+
     getVisualRegression(needs) {
         const avg = Needs.getOverallWellness(needs);
         if (avg > 60) return 0;

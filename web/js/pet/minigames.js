@@ -7,13 +7,15 @@ import { SoundEngine } from '../audio/sound-engine.js';
 
 const ECHO_NODE_COUNT = 6;
 const ECHO_MAX_SEQ = 16;
-const ECHO_FLASH_TICKS = 12;
-const ECHO_GAP_TICKS = 6;
-const ECHO_PAUSE_TICKS = 20;
+const ECHO_FLASH_TICKS = 22;       // ~370ms flash (was 200ms, too fast)
+const ECHO_GAP_TICKS = 14;         // ~230ms gap between notes
+const ECHO_PAUSE_TICKS = 45;       // ~750ms "get ready" silence before first flash
+const ECHO_RETRY_DELAY = 90;       // ~1.5s before allowing a retry after fail
+const ECHO_START_LEN = 2;          // start at 2 nodes (was 3 — brutal)
 const ECHO_CX = 400;
 const ECHO_CY = 200;
 const ECHO_RADIUS = 130;
-const ECHO_NODE_HIT_R = 38;
+const ECHO_NODE_HIT_R = 46;        // larger touch target
 
 const CLEAN_MAX_DUST = 40;
 const CLEAN_PET_X = 400 - 160;
@@ -29,12 +31,14 @@ const STAR_HIT_R = 30;
 const GameType = { ECHO_MEMORY: 0, LIGHT_CLEANSING: 1, STAR_JOY: 2 };
 
 // ---- Echo Memory State ----
+// Phases: 'pause' → 'flash' → 'gap' → (next step or 'input') → 'success' → 'pause' (next round)
 let echo = {
     sequence: [], seqLen: 0, playerPos: 0,
-    playback: true, pbIndex: 0, pbTimer: 0,
-    flashOn: false, litNode: -1, failed: false,
-    success: false, score: 0, successTimer: 0,
-    nodeX: [], nodeY: []
+    phase: 'pause', pbIndex: 0, phaseTimer: 0,
+    litNode: -1, failed: false, failTimer: 0,
+    success: false, successTimer: 0,
+    score: 0, rounds: 0,
+    nodeX: [], nodeY: [],
 };
 
 function echoComputeNodes() {
@@ -54,75 +58,123 @@ function echoAddRandom() {
 }
 
 function echoStartPlayback() {
-    echo.playback = true; echo.pbIndex = 0; echo.pbTimer = 0;
-    echo.flashOn = false; echo.litNode = -1; echo.playerPos = 0;
+    echo.phase = 'pause';
+    echo.phaseTimer = 0;
+    echo.pbIndex = 0;
+    echo.litNode = -1;
+    echo.playerPos = 0;
 }
 
 function echoInit() {
     echoComputeNodes();
-    echo.sequence = []; echo.seqLen = 0; echo.score = 0;
-    echo.failed = false; echo.success = false; echo.successTimer = 0;
-    for (let i = 0; i < 3; i++) echoAddRandom();
+    echo.sequence = []; echo.seqLen = 0; echo.score = 0; echo.rounds = 0;
+    echo.failed = false; echo.failTimer = 0;
+    echo.success = false; echo.successTimer = 0;
+    for (let i = 0; i < ECHO_START_LEN; i++) echoAddRandom();
     echoStartPlayback();
 }
 
+function echoAdvanceAfterFlash() {
+    echo.pbIndex++;
+    if (echo.pbIndex >= echo.seqLen) {
+        echo.phase = 'input';
+        echo.litNode = -1;
+    } else {
+        echo.phase = 'gap';
+        echo.phaseTimer = 0;
+    }
+}
+
 function echoUpdate() {
-    if (echo.failed) return;
+    // Failure: after a delay, tap-to-retry becomes available
+    if (echo.failed) {
+        if (echo.failTimer < 1000) echo.failTimer++;
+        return;
+    }
+    // Success celebration, then next round with +1 node
     if (echo.success) {
         echo.successTimer++;
-        if (echo.successTimer > 30) {
+        if (echo.successTimer > 50) {
             echo.success = false; echo.successTimer = 0;
-            echoAddRandom(); echoStartPlayback();
+            echoAddRandom();
+            echoStartPlayback();
         }
         return;
     }
-    if (!echo.playback) return;
 
-    echo.pbTimer++;
-    const stepDur = ECHO_FLASH_TICKS + ECHO_GAP_TICKS;
-
-    if (echo.pbIndex === 0 && echo.pbTimer < ECHO_PAUSE_TICKS) {
-        echo.litNode = -1; return;
-    }
-    const adj = echo.pbTimer - (echo.pbIndex === 0 ? ECHO_PAUSE_TICKS : 0);
-
-    if (echo.pbIndex >= echo.seqLen) {
-        echo.playback = false; echo.litNode = -1; return;
-    }
-
-    const pos = adj % stepDur;
-    if (pos === 0) {
-        echo.litNode = echo.sequence[echo.pbIndex]; echo.flashOn = true;
-        try { SoundEngine.playEchoNode(echo.sequence[echo.pbIndex], true); } catch (_) {}
-    }
-    else if (pos === ECHO_FLASH_TICKS) { echo.litNode = -1; echo.flashOn = false; }
-
-    if (pos === stepDur - 1) {
-        echo.pbIndex++;
-        if (echo.pbIndex >= echo.seqLen) { echo.playback = false; echo.litNode = -1; }
+    echo.phaseTimer++;
+    switch (echo.phase) {
+        case 'pause': {
+            echo.litNode = -1;
+            if (echo.phaseTimer >= ECHO_PAUSE_TICKS) {
+                echo.phase = 'flash';
+                echo.phaseTimer = 0;
+                echo.litNode = echo.sequence[echo.pbIndex];
+                try { SoundEngine.playEchoNode(echo.litNode, true); } catch (_) {}
+            }
+            break;
+        }
+        case 'flash': {
+            // litNode already set; wait for the flash to finish
+            if (echo.phaseTimer >= ECHO_FLASH_TICKS) {
+                echo.litNode = -1;
+                echoAdvanceAfterFlash();
+            }
+            break;
+        }
+        case 'gap': {
+            echo.litNode = -1;
+            if (echo.phaseTimer >= ECHO_GAP_TICKS) {
+                echo.phase = 'flash';
+                echo.phaseTimer = 0;
+                echo.litNode = echo.sequence[echo.pbIndex];
+                try { SoundEngine.playEchoNode(echo.litNode, true); } catch (_) {}
+            }
+            break;
+        }
+        case 'input': {
+            // Clear confirmation flash from a player tap after ~180ms
+            if (echo.litNode >= 0 && echo.phaseTimer >= 11) {
+                echo.litNode = -1;
+            }
+            break;
+        }
     }
 }
 
 function echoHandleTouch(x, y) {
-    if (echo.playback || echo.failed || echo.success) return;
+    // Tap-to-retry after a failure
+    if (echo.failed && echo.failTimer >= ECHO_RETRY_DELAY) {
+        echoInit();
+        return;
+    }
+    if (echo.failed || echo.success) return;
+    if (echo.phase !== 'input') return;
+
+    // Use generous hit radius; pick the CLOSEST node under the touch
+    let best = -1, bestD = ECHO_NODE_HIT_R * ECHO_NODE_HIT_R * 1.5;
     for (let i = 0; i < ECHO_NODE_COUNT; i++) {
         const dx = x - echo.nodeX[i], dy = y - echo.nodeY[i];
-        if (dx * dx + dy * dy <= ECHO_NODE_HIT_R * ECHO_NODE_HIT_R) {
-            echo.litNode = i;
-            if (i === echo.sequence[echo.playerPos]) {
-                try { SoundEngine.playEchoNode(i, false); } catch (_) {}
-                echo.playerPos++;
-                echo.score += echo.seqLen;
-                if (echo.playerPos >= echo.seqLen) {
-                    echo.success = true; echo.successTimer = 0;
-                    try { SoundEngine.playEchoSuccess(); } catch (_) {}
-                }
-            } else {
-                echo.failed = true;
-                try { SoundEngine.playEchoFail(); } catch (_) {}
-            }
-            return;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD) { bestD = d2; best = i; }
+    }
+    if (best < 0) return;
+
+    echo.litNode = best;
+    echo.phaseTimer = 0;   // reset so the flash-clear timer above starts fresh
+    if (best === echo.sequence[echo.playerPos]) {
+        try { SoundEngine.playEchoNode(best, false); } catch (_) {}
+        echo.playerPos++;
+        echo.score += echo.seqLen;
+        if (echo.playerPos >= echo.seqLen) {
+            echo.rounds++;
+            echo.success = true; echo.successTimer = 0;
+            try { SoundEngine.playEchoSuccess(); } catch (_) {}
         }
+    } else {
+        echo.failed = true;
+        echo.failTimer = 0;
+        try { SoundEngine.playEchoFail(); } catch (_) {}
     }
 }
 
@@ -374,7 +426,9 @@ export const MiniGames = {
 
     isGameOver() {
         switch (_currentGame) {
-            case GameType.ECHO_MEMORY: return echo.failed;
+            // Echo: failure is retryable. Only auto-end if the user waits
+            // a full 6 seconds without retrying.
+            case GameType.ECHO_MEMORY: return echo.failed && echo.failTimer > 360;
             case GameType.LIGHT_CLEANSING: return clean.complete;
             case GameType.STAR_JOY: return star.sessionComplete;
         }
@@ -409,57 +463,114 @@ const NODE_COLORS = ['#E07030', '#40C4C4', '#E0C040', '#A060E0', '#60E060', '#E0
 
 function renderEcho(ctx, w, h) {
     const sx = w / 800, sy = h / 400;
+    const s = Math.min(sx, sy);
     ctx.clearRect(0, 0, w, h);
 
-    // Title
+    // Title + round
     ctx.fillStyle = '#D4A534';
-    ctx.font = '14px monospace';
+    ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`Thishi-Revosh  -  Livello ${echo.seqLen}`, w / 2, 20);
+    ctx.fillText(`Thishi-Revosh  ·  Round ${echo.rounds + 1}  ·  ${echo.seqLen} note`, w / 2, 22);
 
-    if (echo.playback) {
-        ctx.fillStyle = '#7A8A9A';
-        ctx.font = '12px sans-serif';
-        ctx.fillText('Osserva la sequenza...', w / 2, h - 20);
-    } else if (!echo.failed && !echo.success) {
-        ctx.fillStyle = '#3ECFCF';
-        ctx.font = '12px sans-serif';
-        ctx.fillText('Ripeti la sequenza!', w / 2, h - 20);
+    // Bottom prompt text
+    let prompt = '';
+    let promptColor = '#7A8A9A';
+    if (echo.failed) {
+        if (echo.failTimer >= ECHO_RETRY_DELAY) {
+            prompt = 'Tocca in qualsiasi punto per riprovare';
+            promptColor = '#E0C070';
+        } else {
+            prompt = 'Sequenza interrotta...';
+            promptColor = '#C04040';
+        }
+    } else if (echo.success) {
+        prompt = 'Ko! Corretto!  Prossimo round...';
+        promptColor = '#40C470';
+    } else if (echo.phase === 'pause') {
+        prompt = 'Guarda bene...';
+    } else if (echo.phase === 'flash' || echo.phase === 'gap') {
+        prompt = `Osserva la sequenza  (${echo.pbIndex + 1}/${echo.seqLen})`;
+    } else if (echo.phase === 'input') {
+        prompt = `Ripeti la sequenza  (${echo.playerPos}/${echo.seqLen})`;
+        promptColor = '#3ECFCF';
+    }
+    if (prompt) {
+        ctx.fillStyle = promptColor;
+        ctx.font = '13px sans-serif';
+        ctx.fillText(prompt, w / 2, h - 18);
     }
 
-    // Nodes
+    // Progress dots row (one per node in sequence)
+    const dotY = 42;
+    const dotSize = 6;
+    const gap = 14;
+    const rowW = echo.seqLen * gap;
+    for (let i = 0; i < echo.seqLen; i++) {
+        const dx = w / 2 - rowW / 2 + i * gap + gap / 2;
+        let fill = '#2A3A4A';
+        if (echo.failed) fill = '#402020';
+        else if (echo.success || echo.phase === 'input') {
+            if (i < echo.playerPos) fill = '#40C470';
+        } else if ((echo.phase === 'flash' || echo.phase === 'gap')) {
+            if (i < echo.pbIndex) fill = 'rgba(212,165,52,0.6)';
+            if (i === echo.pbIndex && echo.phase === 'flash') fill = '#D4A534';
+        }
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.arc(dx, dotY, dotSize, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Nodes (6 around a circle)
     for (let i = 0; i < ECHO_NODE_COUNT; i++) {
         const nx = echo.nodeX[i] * sx;
         const ny = echo.nodeY[i] * sy;
         const lit = echo.litNode === i;
-        const r = (lit ? 32 : 24) * Math.min(sx, sy);
+        const r = (lit ? 38 : 30) * s;
 
+        // Soft outer halo when lit
+        if (lit) {
+            const halo = ctx.createRadialGradient(nx, ny, r * 0.6, nx, ny, r * 2.4);
+            halo.addColorStop(0, NODE_COLORS[i] + 'AA');
+            halo.addColorStop(1, NODE_COLORS[i] + '00');
+            ctx.fillStyle = halo;
+            ctx.beginPath();
+            ctx.arc(nx, ny, r * 2.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Main disk
         ctx.beginPath();
         ctx.arc(nx, ny, r, 0, Math.PI * 2);
-        ctx.fillStyle = lit ? NODE_COLORS[i] : `${NODE_COLORS[i]}44`;
+        ctx.fillStyle = lit
+            ? NODE_COLORS[i]
+            : (echo.phase === 'input' ? `${NODE_COLORS[i]}66` : `${NODE_COLORS[i]}33`);
         ctx.fill();
-        ctx.strokeStyle = NODE_COLORS[i];
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = lit ? '#FFFFFF' : NODE_COLORS[i];
+        ctx.lineWidth = lit ? 3 : 2;
         ctx.stroke();
 
+        // Inner highlight
         if (lit) {
             ctx.beginPath();
-            ctx.arc(nx, ny, r + 6, 0, Math.PI * 2);
-            ctx.strokeStyle = `${NODE_COLORS[i]}66`;
-            ctx.lineWidth = 3;
-            ctx.stroke();
+            ctx.arc(nx - r * 0.25, ny - r * 0.3, r * 0.35, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.fill();
         }
     }
 
-    if (echo.failed) {
+    // Score badge (top-right, subtle)
+    ctx.fillStyle = '#7A8A9A';
+    ctx.textAlign = 'right';
+    ctx.font = '11px monospace';
+    ctx.fillText(`score ${echo.score}`, w - 10, 20);
+
+    // Big success/fail text overlay
+    if (echo.failed && echo.failTimer < ECHO_RETRY_DELAY) {
         ctx.fillStyle = '#C04040';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.fillText('Sequenza interrotta!', w / 2, h / 2 + 60);
-    }
-    if (echo.success) {
-        ctx.fillStyle = '#40C470';
-        ctx.font = 'bold 18px sans-serif';
-        ctx.fillText('Ko! Corretto!', w / 2, h / 2 + 60);
+        ctx.font = 'bold 22px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Sequenza interrotta', w / 2, h / 2 + 80);
     }
 }
 

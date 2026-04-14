@@ -4,6 +4,54 @@
  */
 import { Events } from '../engine/events.js';
 
+function spawnBubble(x, y) {
+    _state.bubbles.push({
+        x: x + (Math.random() - 0.5) * 20,
+        y: y + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: -0.5 - Math.random() * 0.8,
+        life: 1.0,
+        size: 4 + Math.random() * 5,
+    });
+}
+
+function updateScrub(pos) {
+    const ax = pos.x - _state.petCx;
+    const ay = pos.y - _state.petCy;
+    const dist = Math.hypot(ax, ay);
+    // Scrub ring: between half-radius and 3× radius around pet center
+    if (dist < _state.petRadius * 0.4 || dist > _state.petRadius * 3) {
+        _state.scrubLastAngle = null;
+        return;
+    }
+    const ang = Math.atan2(ay, ax);
+    if (_state.scrubLastAngle !== null) {
+        let da = ang - _state.scrubLastAngle;
+        if (da > Math.PI) da -= 2 * Math.PI;
+        if (da < -Math.PI) da += 2 * Math.PI;
+        // Only count motion in a consistent direction (sign-preserving accumulator)
+        _state.scrubAngle += da;
+        if (_state.bubbles.length < 30 && Math.random() < 0.3) spawnBubble(pos.x, pos.y);
+        if (Math.abs(_state.scrubAngle) > Math.PI * 2) {
+            _state.scrubFullRotations++;
+            _state.scrubAngle = 0;
+            if (navigator.vibrate) navigator.vibrate(10);
+            for (let k = 0; k < 6; k++) spawnBubble(pos.x, pos.y);
+            if (_state.scrubFullRotations >= 2) {
+                _state.scrubFullRotations = 0;
+                Events.emit('pet-scrub', { x: pos.x, y: pos.y });
+            }
+        }
+    }
+    _state.scrubLastAngle = ang;
+}
+
+function resetScrub() {
+    _state.scrubAngle = 0;
+    _state.scrubLastAngle = null;
+    _state.scrubFullRotations = 0;
+}
+
 // Interaction state
 const _state = {
     // Mouse / touch position in canvas coords
@@ -27,6 +75,11 @@ const _state = {
     // Idle cursor tracking for eyes
     cursorActive: false,
     cursorFadeTimer: 0,
+    // Circular scrub (pulizia) — cumulative angle around pet center
+    scrubAngle: 0,
+    scrubLastAngle: null,
+    scrubFullRotations: 0,
+    bubbles: [],
 };
 
 function canvasCoords(canvas, e) {
@@ -96,6 +149,8 @@ export const Interactions = {
                 _state.dragDist += Math.abs(dx);
                 if (_state.dragDist > 10) _state.isDragging = true;
 
+                if (_state.isDragging) updateScrub(pos);
+
                 // Detect petting strokes (horizontal movement over pet)
                 if (isOverPet(pos.x, pos.y) && _state.isDragging) {
                     const dir = dx > 0 ? 1 : -1;
@@ -126,6 +181,7 @@ export const Interactions = {
             _state.isDragging = false;
             _state.petStrokes = 0;
             _state.lastStrokeDir = 0;
+            resetScrub();
         });
 
         canvas.addEventListener('mouseleave', () => {
@@ -178,6 +234,8 @@ export const Interactions = {
                     if (_state.longPressTimer) { clearTimeout(_state.longPressTimer); _state.longPressTimer = null; }
                 }
 
+                if (_state.isDragging) updateScrub(pos);
+
                 if (isOverPet(pos.x, pos.y) && _state.isDragging) {
                     // Accept strokes in any direction (dominant axis)
                     const useX = Math.abs(dx) >= Math.abs(dy);
@@ -217,6 +275,7 @@ export const Interactions = {
             _state.petStrokes = 0;
             _state.lastStrokeDir = 0;
             _state.longPressTriggered = false;
+            resetScrub();
         });
     },
 
@@ -264,6 +323,25 @@ export const Interactions = {
             ctx.globalAlpha = h.life;
             ctx.fillStyle = '#E060A0';
             _drawHeart(ctx, h.x, h.y, h.size);
+            ctx.restore();
+        }
+
+        // Update & draw bubbles (circular scrub feedback)
+        for (let i = _state.bubbles.length - 1; i >= 0; i--) {
+            const b = _state.bubbles[i];
+            b.x += b.vx; b.y += b.vy;
+            b.vy *= 0.98;
+            b.life -= 0.018;
+            if (b.life <= 0) { _state.bubbles.splice(i, 1); continue; }
+            ctx.save();
+            ctx.globalAlpha = b.life * 0.8;
+            ctx.strokeStyle = '#8EE5FF';
+            ctx.fillStyle = 'rgba(142,229,255,0.18)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
             ctx.restore();
         }
 

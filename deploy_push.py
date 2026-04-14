@@ -14,6 +14,17 @@ FILES = [
     (r'D:\LAlien\web\js\ui\renderer.js',            '/share/Public/lalien/js/ui/renderer.js'),
     (r'D:\LAlien\web\js\audio\sound-engine.js',     '/share/Public/lalien/js/audio/sound-engine.js'),
     (r'D:\LAlien\web\js\pet\minigames.js',          '/share/Public/lalien/js/pet/minigames.js'),
+    (r'D:\LAlien\web\js\pet\needs.js',              '/share/Public/lalien/js/pet/needs.js'),
+    (r'D:\LAlien\web\js\pet\evolution.js',          '/share/Public/lalien/js/pet/evolution.js'),
+    (r'D:\LAlien\web\js\pet\activity.js',           '/share/Public/lalien/js/pet/activity.js'),
+    (r'D:\LAlien\web\js\pet\autonomy.js',           '/share/Public/lalien/js/pet/autonomy.js'),
+    (r'D:\LAlien\web\js\pet\pet.js',                '/share/Public/lalien/js/pet/pet.js'),
+    (r'D:\LAlien\web\js\ui\interactions.js',        '/share/Public/lalien/js/ui/interactions.js'),
+    (r'D:\LAlien\web\js\ui\gestures.js',            '/share/Public/lalien/js/ui/gestures.js'),
+    (r'D:\LAlien\web\js\ui\notifications.js',       '/share/Public/lalien/js/ui/notifications.js'),
+    (r'D:\LAlien\web\js\ai\sentiment.js',           '/share/Public/lalien/js/ai/sentiment.js'),
+    (r'D:\LAlien\web\js\i18n\alien-lexicon.js',     '/share/Public/lalien/js/i18n/alien-lexicon.js'),
+    (r'D:\LAlien\web\js\ai\system-prompt.js',       '/share/Public/lalien/js/ai/system-prompt.js'),
 ]
 
 c = paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())

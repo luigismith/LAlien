@@ -149,7 +149,7 @@ html, body {
     flex-shrink: 0;
 }
 
-#btn-needs-expand {
+#btn-needs-expand, .btn-status-icon {
     background: none;
     border: none;
     color: var(--text-dim);
@@ -159,7 +159,169 @@ html, body {
     position: relative;
     min-width: 32px;
     min-height: 32px;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.2s, transform 0.15s;
 }
+.btn-status-icon:active { transform: rotate(20deg) scale(0.9); color: var(--gold); }
+
+/* Bottom action bar is now unified into the status bar chips — hide it.
+   Kept in DOM as a legacy drag-to-pet source (still works). */
+#action-bar { display: none !important; }
+
+/* Make chips bigger and more tappable now that they're the primary controls */
+.need-chip.actionable {
+    cursor: pointer;
+}
+.need-chip.actionable:active { transform: scale(0.88); }
+
+/* ---- Need-chip tap popover ---- */
+.need-popover {
+    position: fixed;
+    z-index: 600;
+    background: linear-gradient(180deg, rgba(15,34,51,0.98) 0%, rgba(5,21,32,0.98) 100%);
+    border: 1px solid var(--gold-dim);
+    border-radius: 14px;
+    padding: 14px 14px 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.55), 0 0 0 1px rgba(62,207,207,0.1) inset;
+    color: var(--text);
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+    transition: opacity 0.15s ease-out, transform 0.18s ease-out;
+    backdrop-filter: blur(8px);
+}
+.need-popover.visible { opacity: 1; transform: translateY(0) scale(1); }
+.need-popover::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: var(--arrow-x, 50%);
+    transform: translateX(-50%) rotate(45deg);
+    width: 14px; height: 14px;
+    background: rgba(15,34,51,0.98);
+    border-left: 1px solid var(--gold-dim);
+    border-top: 1px solid var(--gold-dim);
+}
+.need-popover.state-critical { border-color: var(--danger); box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 16px rgba(224,48,48,0.45); }
+.need-popover.state-bad      { border-color: rgba(224,112,48,0.7); }
+.need-popover.state-warn     { border-color: rgba(212,165,52,0.6); }
+
+.need-popover-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.need-popover-icon {
+    font-size: 28px;
+    line-height: 1;
+    filter: drop-shadow(0 0 6px rgba(62,207,207,0.3));
+}
+.need-popover-title { flex: 1; min-width: 0; }
+.need-popover-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.need-popover-state {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+.need-popover-state.ok       { color: var(--cyan); }
+.need-popover-state.warn     { color: #E0C070; }
+.need-popover-state.bad      { color: #E07030; }
+.need-popover-state.critical { color: var(--danger); animation: pulse 1.2s infinite; }
+.need-popover-close {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 22px; line-height: 1; cursor: pointer;
+    padding: 2px 6px;
+    min-width: 32px; min-height: 32px;
+    border-radius: 6px;
+}
+.need-popover-close:hover { color: var(--gold); background: rgba(212,165,52,0.08); }
+
+.need-popover-track {
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+.need-popover-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.need-popover-msg {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text);
+    margin: 0 0 10px;
+}
+.need-popover-note {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-style: italic;
+    margin: 0 0 8px;
+}
+.need-popover-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin: 8px 0 0;
+    text-align: center;
+    opacity: 0.75;
+}
+
+.need-popover-cta {
+    width: 100%;
+    background: linear-gradient(180deg, var(--gold) 0%, #B88B2B 100%);
+    color: #0F2233;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    min-height: 44px;
+    transition: transform 0.12s, box-shadow 0.2s;
+    box-shadow: 0 3px 10px rgba(212,165,52,0.3);
+}
+.need-popover-cta:hover  { box-shadow: 0 4px 14px rgba(212,165,52,0.5); }
+.need-popover-cta:active { transform: scale(0.97); }
+
+/* ---- Evolution status panel ---- */
+#settings-evolution-status {
+    font-size: 13px;
+    color: var(--text);
+    margin-top: 6px;
+}
+.evo-list {
+    list-style: none;
+    margin: 0; padding: 0;
+    border: 1px solid rgba(212,165,52,0.2);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.evo-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.evo-list li:last-child { border-bottom: none; }
+.evo-list li:nth-child(odd) { background: rgba(15,34,51,0.35); }
+.evo-label  { color: var(--text-dim); }
+.evo-values { color: var(--text); font-family: monospace; }
+.evo-values b { color: #E07030; }
+.evo-ready { color: var(--cyan); font-weight: 700; }
+.evo-done  { color: var(--gold); }
+.evo-dead  { color: var(--text-dim); font-style: italic; }
 #btn-needs-expand.has-alerts { color: var(--danger); animation: pulse 1.4s infinite; }
 #btn-needs-expand.has-alerts::after {
     content: attr(data-critical);
@@ -180,7 +342,7 @@ html, body {
 /* ---- Canvas ---- */
 #game-canvas {
     position: fixed;
-    top: 40px;
+    top: 52px;   /* matches status-bar height */
     left: 0;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
@@ -238,6 +400,44 @@ html, body {
     box-shadow: 0 0 6px rgba(212,165,52,0.25);
 }
 .btn-action.low .action-label { color: var(--gold); }
+
+/* ---- Drag-to-pet gesture ghost ---- */
+.action-ghost {
+    position: fixed;
+    left: 0; top: 0;
+    transform: translate(-50%, -50%);
+    z-index: 9000;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(212,165,52,0.9) 0%, rgba(62,207,207,0.55) 60%, rgba(10,25,41,0.8) 100%);
+    box-shadow: 0 0 22px rgba(62,207,207,0.55), 0 0 40px rgba(212,165,52,0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    pointer-events: none;
+    user-select: none;
+    transition: transform 0.08s ease-out, opacity 0.2s, box-shadow 0.15s;
+    animation: ghostFloat 1.4s ease-in-out infinite;
+}
+.action-ghost.on-target {
+    transform: translate(-50%, -50%) scale(1.35);
+    box-shadow: 0 0 36px #3ECFCF, 0 0 60px rgba(212,165,52,0.6);
+}
+.action-ghost.delivered {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0;
+}
+.action-ghost.returning {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0;
+}
+@keyframes ghostFloat {
+    0%,100% { filter: hue-rotate(0deg); }
+    50%     { filter: hue-rotate(20deg); }
+}
+.btn-action.dragging-source {
+    opacity: 0.5;
+    transform: scale(0.94);
+}
 
 .btn-action.satisfied {
     border-color: rgba(62,207,100,0.35);
@@ -890,29 +1090,48 @@ html, body {
 /* ---- Speech Bubble ---- */
 #speech-bubble {
     position: fixed;
-    bottom: 90px;
+    bottom: 32px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(10,25,41,0.95);
-    border: 1px solid var(--cyan-dim);
-    border-radius: 12px;
-    padding: 12px 18px;
-    max-width: 80vw;
+    background: linear-gradient(180deg, rgba(10,25,41,0.98) 0%, rgba(5,18,28,0.98) 100%);
+    border: 2px solid var(--cyan);
+    border-radius: 18px;
+    padding: 16px 24px;
+    min-width: 180px;
+    max-width: 86vw;
     z-index: 110;
+    box-shadow: 0 10px 34px rgba(0,0,0,0.6), 0 0 22px rgba(62,207,207,0.35), 0 0 0 1px rgba(62,207,207,0.15) inset;
+    backdrop-filter: blur(6px);
     animation: bubbleIn 0.4s ease;
+}
+#speech-bubble::after {
+    /* Pointer tail toward the pet (upward) */
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 18px; height: 18px;
+    background: rgba(5,18,28,0.98);
+    border-right: 2px solid var(--cyan);
+    border-bottom: 2px solid var(--cyan);
+    box-shadow: 6px 6px 14px rgba(62,207,207,0.25);
 }
 
 @keyframes bubbleIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
-    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    from { opacity: 0; transform: translateX(-50%) translateY(14px) scale(0.9); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 
 #speech-text {
     font-family: var(--font-alien);
-    color: var(--cyan);
-    font-size: 15px;
-    line-height: 1.5;
+    color: #EAFBFB;
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.45;
     text-align: center;
+    text-shadow: 0 0 8px rgba(62,207,207,0.45), 0 2px 4px rgba(0,0,0,0.8);
+    letter-spacing: 0.3px;
 }
 
 #speech-bubble.mood-happy { border-color: var(--mood-happy); }
@@ -1470,7 +1689,8 @@ input, textarea, select, [contenteditable="true"] {
     .need-chip-icon { font-size: 15px; }
 
     /* Speech bubble */
-    #speech-bubble { max-width: 92vw; bottom: 110px; font-size: 13px; }
+    #speech-bubble { max-width: 94vw; bottom: 16px; padding: 14px 18px; }
+    #speech-text   { font-size: 18px; }
 
     /* Setup wizard */
     .setup-container { padding: 20px 16px; }
