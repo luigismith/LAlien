@@ -332,6 +332,8 @@ function bindSetupWizard() {
         });
     });
 
+    document.getElementById('btn-setup-next')?.addEventListener('click', () => showStep(3));
+
     document.getElementById('btn-setup-plant')?.addEventListener('click', async () => {
         const apiKey = document.getElementById('setup-api-key').value.trim();
         const sttKey = document.getElementById('setup-stt-key').value.trim();

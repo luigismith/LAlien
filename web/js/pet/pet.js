@@ -114,8 +114,13 @@ export const Pet = {
             return;
         }
 
-        // Egg: no decay, just wait for touch interactions
-        if (this.stage === 0) return;
+        // Egg: track age, check evolution (hatching), but no need decay
+        if (this.stage === 0) {
+            this.ageSeconds += Math.floor(timeMultiplier);
+            this._checkEvolution();
+            this.lastRealTimestamp = Date.now();
+            return;
+        }
 
         this.ageSeconds += Math.floor(timeMultiplier);
         Needs.decay(this.needs, timeMultiplier);

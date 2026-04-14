@@ -125,6 +125,22 @@ export const Screens = {
                 if (label) label.textContent = text;
             }
         }
+
+        // Update screen titles and settings labels
+        const textMap = {
+            'conv-title': I18n.get('screen_conversation_title'),
+            'diary-title': I18n.get('screen_diary_title'),
+            'lexicon-title': I18n.get('screen_lexicon_title'),
+            'graveyard-title': I18n.get('screen_graveyard_title'),
+            'settings-title-text': I18n.get('settings_title'),
+            'settings-lang-label': I18n.get('settings_language'),
+            'settings-provider-label': I18n.get('settings_provider'),
+            'settings-api-label': I18n.get('settings_api_key'),
+        };
+        for (const [id, text] of Object.entries(textMap)) {
+            const el = document.getElementById(id);
+            if (el && text) el.textContent = text;
+        }
     },
 
     // ---- Conversation ----
