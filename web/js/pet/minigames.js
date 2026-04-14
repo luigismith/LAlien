@@ -3,6 +3,7 @@
  * Port of firmware/src/pet/minigames.cpp
  * Three bonding rituals with canvas rendering
  */
+import { SoundEngine } from '../audio/sound-engine.js';
 
 const ECHO_NODE_COUNT = 6;
 const ECHO_MAX_SEQ = 16;
@@ -90,7 +91,10 @@ function echoUpdate() {
     }
 
     const pos = adj % stepDur;
-    if (pos === 0) { echo.litNode = echo.sequence[echo.pbIndex]; echo.flashOn = true; }
+    if (pos === 0) {
+        echo.litNode = echo.sequence[echo.pbIndex]; echo.flashOn = true;
+        try { SoundEngine.playEchoNode(echo.sequence[echo.pbIndex], true); } catch (_) {}
+    }
     else if (pos === ECHO_FLASH_TICKS) { echo.litNode = -1; echo.flashOn = false; }
 
     if (pos === stepDur - 1) {
@@ -106,12 +110,17 @@ function echoHandleTouch(x, y) {
         if (dx * dx + dy * dy <= ECHO_NODE_HIT_R * ECHO_NODE_HIT_R) {
             echo.litNode = i;
             if (i === echo.sequence[echo.playerPos]) {
+                try { SoundEngine.playEchoNode(i, false); } catch (_) {}
                 echo.playerPos++;
                 echo.score += echo.seqLen;
                 if (echo.playerPos >= echo.seqLen) {
                     echo.success = true; echo.successTimer = 0;
+                    try { SoundEngine.playEchoSuccess(); } catch (_) {}
                 }
-            } else { echo.failed = true; }
+            } else {
+                echo.failed = true;
+                try { SoundEngine.playEchoFail(); } catch (_) {}
+            }
             return;
         }
     }
@@ -150,14 +159,19 @@ function cleanUpdate() {
         clean.flinchTimer++;
         if (clean.flinchTimer > 20) { clean.flinching = false; clean.flinchTimer = 0; }
     }
-    if (clean.removedDust >= clean.totalDust) clean.complete = true;
+    if (clean.removedDust >= clean.totalDust && !clean.complete) {
+        clean.complete = true;
+        try { SoundEngine.playCleanseComplete(); } catch (_) {}
+    }
 }
 
 function cleanHandleTouch(x, y, dragging) {
     if (clean.complete) return;
     clean.touchCount++; clean.touchTimer = 15;
     if (clean.touchCount >= 8) {
-        clean.flinching = true; clean.flinchTimer = 0; clean.touchCount = 0; return;
+        clean.flinching = true; clean.flinchTimer = 0; clean.touchCount = 0;
+        try { SoundEngine.playCleanseFlinch(); } catch (_) {}
+        return;
     }
     if (clean.flinching) return;
     const gentle = dragging;
@@ -170,6 +184,7 @@ function cleanHandleTouch(x, y, dragging) {
             if (d.hp <= 0) {
                 d.active = false; clean.removedDust++;
                 clean.score += gentle ? 10 : 5;
+                try { SoundEngine.playCleanseSparkle(); } catch (_) {}
             }
             return;
         }
@@ -216,7 +231,10 @@ function starUpdate() {
         star.completeTimer++;
         if (star.completeTimer > 60) {
             star.constIdx++;
-            if (star.constIdx >= star.totalConst) star.sessionComplete = true;
+            if (star.constIdx >= star.totalConst) {
+                star.sessionComplete = true;
+                try { SoundEngine.playStarSessionComplete(); } catch (_) {}
+            }
             else starResetConst();
         }
     }
@@ -231,7 +249,10 @@ function starHandleTouch(x, y) {
         if (dx * dx + dy * dy <= STAR_HIT_R * STAR_HIT_R) { tapped = i; break; }
     }
     if (tapped < 0) { star.selected = -1; return; }
-    if (star.selected < 0) { star.selected = tapped; }
+    if (star.selected < 0) {
+        star.selected = tapped;
+        try { SoundEngine.playStarSelect(); } catch (_) {}
+    }
     else if (tapped === star.selected) { star.selected = -1; }
     else {
         for (let e = 0; e < c.edgeCount; e++) {
@@ -240,8 +261,10 @@ function starHandleTouch(x, y) {
                           (c.edges[e].to === star.selected && c.edges[e].from === tapped);
             if (match) {
                 star.edgeDone[e] = true; star.completedEdges++; star.score += 20;
+                try { SoundEngine.playStarEdge(); } catch (_) {}
                 if (star.completedEdges >= c.edgeCount) {
                     star.constComplete = true; star.completeTimer = 0; star.score += 50;
+                    try { SoundEngine.playStarConstellation(); } catch (_) {}
                 }
                 break;
             }

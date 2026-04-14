@@ -3,7 +3,7 @@ import os, sys, threading
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer as HTTPServer, SimpleHTTPRequestHandler
 
 class H(SimpleHTTPRequestHandler):
     def end_headers(self):

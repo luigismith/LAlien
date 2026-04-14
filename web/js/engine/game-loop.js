@@ -19,6 +19,9 @@ import { LLMClient } from '../ai/llm-client.js';
 import { SystemPrompt } from '../ai/system-prompt.js';
 import { STTClient } from '../ai/stt-client.js';
 import { DiaryGenerator } from '../ai/diary-generator.js';
+import { CloudSync } from './cloud-sync.js';
+import { Tutorial } from '../ui/tutorial.js';
+import { SoundEngine } from '../audio/sound-engine.js';
 
 // Re-export Events for backward compatibility
 export { Events };
@@ -43,6 +46,7 @@ export function showToast(msg, duration = 3000) {
     const el = document.getElementById('toast');
     el.textContent = msg;
     el.classList.remove('hidden');
+    try { SoundEngine.playToast(); } catch (_) {}
     clearTimeout(el._timeout);
     el._timeout = setTimeout(() => el.classList.add('hidden'), duration);
 }
@@ -75,8 +79,15 @@ export function showConfirm(text) {
 function logicTick() {
     if (GameState.paused || !GameState.initialized) return;
 
+    const wasBuried = Pet.buried;
     Pet.update(GameState.timeMultiplier);
     StatusBar.update();
+    updateActionUrgency();
+
+    // Rebirth: when burial completes, show the new seed screen (once)
+    if (!wasBuried && Pet.buried) {
+        setTimeout(() => showRebirthScreen(), 2500);
+    }
 
     // Auto-save every 60 logic ticks (~ 60s at 1x)
     GameState.autoSaveTimer++;
@@ -84,6 +95,12 @@ function logicTick() {
         GameState.autoSaveTimer = 0;
         GameState.dirty = false;
         Persistence.savePet(Pet.serialize());
+        // Cloud push (debounced 3s inside CloudSync)
+        Persistence.exportSaveObj().then(data => {
+            setCloudStatus('syncing');
+            CloudSync.push(data);
+            setTimeout(() => setCloudStatus(CloudSync.isOnline() ? 'synced' : 'offline'), 4000);
+        });
     }
 }
 
@@ -125,9 +142,35 @@ function handleResize() {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud sync UI helpers
+// ---------------------------------------------------------------------------
+function setCloudStatus(state) { // 'synced' | 'syncing' | 'offline'
+    const el = document.getElementById('status-cloud');
+    if (!el) return;
+    el.className = state;
+    el.title = state === 'synced'  ? 'Server sincronizzato' :
+               state === 'syncing' ? 'Sincronizzazione…'  : 'Server offline (salvataggio locale)';
+}
+
+async function cloudPushAll() {
+    setCloudStatus('syncing');
+    const data = await Persistence.exportSaveObj();
+    // include API key hint (not the key itself)
+    const pushed = await CloudSync.pushNow(data);
+    setCloudStatus(pushed ? 'synced' : 'offline');
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 async function init() {
+    // Boot sound engine (AudioContext created lazily on first gesture)
+    SoundEngine.init();
+
+    // Restore time multiplier
+    const savedMult = parseInt(localStorage.getItem('lalien_time_mult') || '1');
+    if (savedMult > 1) GameState.timeMultiplier = savedMult;
+
     // Load i18n
     const savedLang = localStorage.getItem('lalien_language') || 'it';
     await I18n.load(savedLang);
@@ -137,6 +180,33 @@ async function init() {
 
     // Init persistence
     await Persistence.init();
+
+    // ---- Login / Cloud sync ----
+    const cloudStatus = await CloudSync.init();
+    if (!cloudStatus.loggedIn) {
+        // Show login screen — init resumes after login
+        showLoginScreen();
+        return;
+    }
+    await resumeAfterLogin(cloudStatus.online);
+}
+
+async function resumeAfterLogin(serverOnline) {
+    // Try pull from server first
+    if (serverOnline) {
+        try {
+            const remote = await CloudSync.pull();
+            if (remote && remote.pet) {
+                await Persistence.importSaveObj(remote);
+                setCloudStatus('synced');
+            }
+        } catch (e) {
+            console.warn('[LALIEN] Cloud pull failed:', e);
+            setCloudStatus('offline');
+        }
+    } else {
+        setCloudStatus('offline');
+    }
 
     // Check if first run
     const saved = await Persistence.loadPet();
@@ -184,9 +254,21 @@ async function init() {
     Screens.init();
     handleResize();
 
+    // Start cosmic ambient drone for the current stage (skipped if reduced-motion)
+    setTimeout(() => SoundEngine.startAmbient(Pet.getStage ? Pet.getStage() : 0), 400);
+
+    // Tutorial: boot and fire 'start' trigger
+    Tutorial.init();
+    setTimeout(() => Tutorial.trigger('start'), 600);
+
     // If pet is egg, show egg screen
     if (Pet.isEgg()) {
         GameState.currentScreen = 'egg';
+    }
+
+    // If pet is already dead+buried on load, show rebirth screen
+    if (!Pet.isAlive() && Pet.buried) {
+        setTimeout(() => showRebirthScreen(), 300);
     }
 
     requestAnimationFrame(renderLoop);
@@ -240,6 +322,11 @@ function bindActions() {
         }
     });
 
+    // Long-press on pet → open needs overlay
+    Events.on('pet-longpress', () => {
+        StatusBar.toggleNeedsOverlay();
+    });
+
     Events.on('pet-pet', (data) => {
         if (!Pet.isAlive() || Pet.isEgg()) return;
         // Petting gesture detected: boost affection
@@ -257,7 +344,10 @@ function bindActions() {
 }
 
 function handleAction(action) {
-    if (!Pet.isAlive()) {
+    // Tutorial: first action fires 'first-action'
+    Tutorial.trigger('first-action');
+
+    if (!Pet.isAlive() && action !== 'settings') {
         showToast(I18n.get('msg_death'));
         return;
     }
@@ -269,6 +359,7 @@ function handleAction(action) {
     switch (action) {
         case 'feed':
             Needs.feed(Pet.needs);
+            SoundEngine.playFeed();
             SpeechBubble.show('ko-ra... thi!', Pet.getMood(), 2000);
             Pet.recordAction(1);
             DiaryGenerator.logMemory('feed', 'nutrito dal custode');
@@ -276,6 +367,7 @@ function handleAction(action) {
             break;
         case 'sleep':
             Needs.sleep(Pet.needs);
+            SoundEngine.playSleep();
             SpeechBubble.show('mo-ko...', Pet.getMood(), 2000);
             Pet.recordAction(2);
             DiaryGenerator.logMemory('sleep', 'messo a dormire');
@@ -283,19 +375,23 @@ function handleAction(action) {
             break;
         case 'clean':
             Needs.clean(Pet.needs);
+            SoundEngine.playClean();
             SpeechBubble.show('mi-ska thi!', Pet.getMood(), 2000);
             Pet.recordAction(3);
             DiaryGenerator.logMemory('clean', 'pulito con cura');
             Events.emit('pet-changed');
             break;
         case 'play':
+            SoundEngine.playClick();
             Screens.show('minigame-select');
             break;
         case 'talk':
+            SoundEngine.playTalk();
             Screens.show('conversation');
             break;
         case 'caress':
             Needs.caress(Pet.needs);
+            SoundEngine.playCaress(4);
             SpeechBubble.show('la-shi... kesma thi', Pet.getMood(), 2500);
             Pet.recordAction(6);
             Pet.addTouchInteraction();
@@ -304,16 +400,84 @@ function handleAction(action) {
             break;
         case 'meditate':
             Needs.meditate(Pet.needs, Pet.getStage());
+            SoundEngine.playMeditate();
             SpeechBubble.show('selath... vythi...', Pet.getMood(), 3000);
             Pet.recordAction(7);
             DiaryGenerator.logMemory('meditate', 'meditazione cosmica');
             Events.emit('pet-changed');
             break;
         case 'settings':
+            SoundEngine.playClick();
             Screens.show('settings');
             break;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Action button urgency (highlight buttons based on critical needs)
+// ---------------------------------------------------------------------------
+const ACTION_NEED_MAP = [
+    ['btn-feed',     [0]],          // KORA - hunger
+    ['btn-sleep',    [1]],          // MOKO - rest
+    ['btn-clean',    [2]],          // MISKA - hygiene
+    ['btn-play',     [3, 7]],       // NASHI + CURIOSITY
+    ['btn-talk',     [5, 7]],       // COGNITION + CURIOSITY
+    ['btn-caress',   [6, 9]],       // AFFECTION + SECURITY
+    ['btn-meditate', [8]],          // COSMIC
+];
+
+function updateActionUrgency() {
+    const alive = Pet.isAlive();
+    const egg   = Pet.isEgg();
+    let anyCritical = false;
+    for (const [id, indices] of ACTION_NEED_MAP) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        btn.classList.remove('urgent', 'low', 'satisfied');
+        if (!alive || egg) continue;
+        const minVal = Math.min(...indices.map(i => Pet.needs[i]));
+        if (minVal < 20)      { btn.classList.add('urgent'); anyCritical = true; }
+        else if (minVal < 40) btn.classList.add('low');
+        else if (minVal > 70) btn.classList.add('satisfied');
+    }
+    // Critical-need ambient alert: subtle recurring pulse when anything is < 20
+    if (alive && !egg && anyCritical) {
+        if (!updateActionUrgency._critOn) {
+            updateActionUrgency._critOn = true;
+            SoundEngine.startCriticalAlert(14);
+        }
+    } else if (updateActionUrgency._critOn) {
+        updateActionUrgency._critOn = false;
+        SoundEngine.stopCriticalAlert();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Global event -> sound bindings
+// ---------------------------------------------------------------------------
+Events.on('evolution', (data) => {
+    const from = data?.from ?? 0;
+    const to = data?.to ?? 1;
+    if (from === 0) {
+        SoundEngine.playHatch();
+    } else {
+        SoundEngine.playEvolution(from, to);
+    }
+    // Crossfade ambient to new stage
+    setTimeout(() => SoundEngine.startAmbient(to), 1200);
+});
+
+Events.on('death', (data) => {
+    SoundEngine.stopAmbient(1.5);
+    if (data?.type === 6 /* TRANSCENDENCE */) {
+        SoundEngine.playTranscendence();
+    } else {
+        SoundEngine.playDeath(data?.type);
+    }
+});
+
+Events.on('pet-poke', () => SoundEngine.playPoke());
+Events.on('pet-pet',  () => SoundEngine.playCaress(1));
 
 // ---------------------------------------------------------------------------
 // Setup wizard logic
@@ -388,6 +552,148 @@ function bindSetupWizard() {
 
         showToast(I18n.get('setup_success'));
     });
+}
+
+// ---------------------------------------------------------------------------
+// Rebirth (new pet after death)
+// ---------------------------------------------------------------------------
+export function showRebirthScreen() {
+    const screen = document.getElementById('screen-rebirth');
+    if (!screen) return;
+
+    // Compose epitaph from the dead pet
+    const epEl = document.getElementById('rebirth-epitaph');
+    if (epEl) {
+        const name = Pet.getName() || 'Il Lalìen';
+        const stage = Pet.getStageName();
+        const days = Pet.getAgeDays();
+        const words = (Pet.lastWords || '').trim();
+        epEl.innerHTML = `«${name}» — ${stage}, ${days} giorni.` +
+                         (words ? `<br><br>Ultime parole: <em>${words}</em>` : '');
+    }
+
+    const nameInput = document.getElementById('rebirth-name');
+    if (nameInput) nameInput.value = '';
+    screen.classList.remove('hidden');
+
+    // Bind once (idempotent)
+    const plantBtn = document.getElementById('btn-rebirth-plant');
+    const graveBtn = document.getElementById('btn-rebirth-graveyard');
+    if (plantBtn && !plantBtn._bound) {
+        plantBtn._bound = true;
+        plantBtn.addEventListener('click', async () => {
+            const petName = (document.getElementById('rebirth-name').value || '').trim();
+            await plantNewSeed(petName);
+        });
+    }
+    if (graveBtn && !graveBtn._bound) {
+        graveBtn._bound = true;
+        graveBtn.addEventListener('click', () => {
+            screen.classList.add('hidden');
+            Screens.show('graveyard');
+        });
+    }
+}
+
+async function plantNewSeed(petName) {
+    // Reset pet-specific state; KEEP graveyard, vocabulary, API keys, settings, cloud account
+    SoundEngine.playRebirth();
+    Pet.initNew(petName);
+
+    // Reset pet-specific persisted data
+    await Persistence.savePet(Pet.serialize());
+    await Persistence.saveDiary([]);
+    await Persistence.saveMemories([]);
+    DiaryGenerator.restore([]);
+    DiaryGenerator.restoreMemories([]);
+
+    // Hide overlay
+    document.getElementById('screen-rebirth')?.classList.add('hidden');
+
+    // Force cloud push
+    const data = await Persistence.exportSaveObj();
+    CloudSync.pushNow(data).then(ok => setCloudStatus(ok ? 'synced' : 'offline'));
+
+    GameState.currentScreen = 'egg';
+    Events.emit('pet-changed');
+    showToast(I18n.get('setup_success') || 'Un nuovo seme è piantato.');
+}
+
+function maybeShowRebirth() {
+    if (!Pet.isAlive() && Pet.buried) {
+        showRebirthScreen();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Login screen
+// ---------------------------------------------------------------------------
+function showLoginScreen() {
+    const screen = document.getElementById('screen-login');
+    screen.classList.remove('hidden');
+
+    const pinInput      = document.getElementById('login-pin');
+    const usernameField = document.getElementById('login-username-field');
+    const errorEl       = document.getElementById('login-error');
+    const loadingEl     = document.getElementById('login-loading');
+    const formEl        = document.getElementById('login-form');
+    const btnLogin      = document.getElementById('btn-login');
+    const btnOffline    = document.getElementById('btn-login-offline');
+    const hintNew       = document.getElementById('login-hint-new');
+
+    let isNewUser = false;
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.remove('hidden');
+    }
+    function hideError() { errorEl.classList.add('hidden'); }
+
+    // After 4 chars show "new user" hint if server online
+    pinInput.addEventListener('input', () => {
+        hideError();
+        if (pinInput.value.length >= 4) {
+            hintNew.style.display = 'block';
+            usernameField.style.display = 'flex';
+        }
+    });
+
+    pinInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') btnLogin.click();
+    });
+
+    btnLogin.addEventListener('click', async () => {
+        const pin = pinInput.value.trim();
+        if (pin.length < 4) { showError('PIN troppo corto (min 4 cifre)'); return; }
+
+        const username = document.getElementById('login-username').value.trim() || 'Custode';
+        formEl.classList.add('hidden');
+        loadingEl.classList.remove('hidden');
+
+        try {
+            const result = await CloudSync.login(pin, username);
+            loadingEl.classList.add('hidden');
+            screen.classList.add('hidden');
+            SoundEngine.playLogin();
+            showToast(result.is_new
+                ? `Benvenuto, ${result.username}! Account creato.`
+                : `Bentornato, ${result.username}!`);
+            await resumeAfterLogin(true);
+        } catch (e) {
+            loadingEl.classList.add('hidden');
+            formEl.classList.remove('hidden');
+            showError('Errore connessione server: ' + e.message);
+        }
+    });
+
+    btnOffline.addEventListener('click', async () => {
+        screen.classList.add('hidden');
+        setCloudStatus('offline');
+        await resumeAfterLogin(false);
+    });
+
+    // Auto-focus PIN
+    setTimeout(() => pinInput.focus(), 100);
 }
 
 // ---------------------------------------------------------------------------

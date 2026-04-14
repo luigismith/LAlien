@@ -59,12 +59,9 @@ function spawnHeart(x, y) {
 }
 
 function spawnRipple(x, y) {
-    _state.ripples.push({
-        x, y,
-        radius: 5,
-        maxRadius: 40 + Math.random() * 20,
-        life: 1.0,
-    });
+    // Double ring for stronger visual feedback
+    _state.ripples.push({ x, y, radius: 5, maxRadius: 55 + Math.random() * 15, life: 1.0 });
+    _state.ripples.push({ x, y, radius: 2, maxRadius: 35 + Math.random() * 10, life: 1.0 });
 }
 
 export const Interactions = {
@@ -117,11 +114,12 @@ export const Interactions = {
         canvas.addEventListener('mouseup', (e) => {
             const pos = canvasCoords(canvas, e);
             if (_state.isDown && !_state.isDragging && isOverPet(pos.x, pos.y)) {
-                // Poke!
+                if (navigator.vibrate) navigator.vibrate(10);
                 spawnRipple(pos.x, pos.y);
                 Events.emit('pet-poke', { x: pos.x, y: pos.y });
             }
             if (_state.petStrokes >= 4) {
+                if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
                 Events.emit('pet-pet', { strokes: _state.petStrokes });
             }
             _state.isDown = false;
@@ -148,52 +146,77 @@ export const Interactions = {
             _state.y = pos.y;
             _state.cursorActive = true;
             _state.cursorFadeTimer = 300;
+            _state.touchStartTime = performance.now();
+            // Long-press detection (600ms over pet → show needs)
+            _state.longPressTimer = setTimeout(() => {
+                if (_state.isDown && !_state.isDragging && isOverPet(pos.x, pos.y)) {
+                    if (navigator.vibrate) navigator.vibrate([15, 40, 15]);
+                    _state.longPressTriggered = true;
+                    Events.emit('pet-longpress', { x: pos.x, y: pos.y });
+                }
+            }, 600);
+            _state.longPressTriggered = false;
         }, { passive: false });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             const pos = canvasCoords(canvas, e);
             const dx = pos.x - _state.x;
+            const dy = pos.y - _state.y;
             const now = performance.now();
             const dt = now - _state.lastMoveTime;
-            _state.moveSpeed = dt > 0 ? Math.abs(dx) / dt * 16 : 0;
+            _state.moveSpeed = dt > 0 ? Math.hypot(dx, dy) / dt * 16 : 0;
             _state.x = pos.x;
             _state.y = pos.y;
             _state.lastMoveTime = now;
 
             if (_state.isDown) {
-                _state.dragDist += Math.abs(dx) + Math.abs(pos.y - _state.dragStartY);
-                if (_state.dragDist > 10) _state.isDragging = true;
+                const step = Math.abs(dx) + Math.abs(dy);
+                _state.dragDist += step;
+                if (_state.dragDist > 10) {
+                    _state.isDragging = true;
+                    if (_state.longPressTimer) { clearTimeout(_state.longPressTimer); _state.longPressTimer = null; }
+                }
 
                 if (isOverPet(pos.x, pos.y) && _state.isDragging) {
-                    const dir = dx > 0 ? 1 : -1;
-                    if (dir !== _state.lastStrokeDir && _state.lastStrokeDir !== 0) {
-                        _state.petStrokes++;
-                        if (_state.petStrokes % 3 === 0) {
-                            spawnHeart(pos.x, pos.y);
+                    // Accept strokes in any direction (dominant axis)
+                    const useX = Math.abs(dx) >= Math.abs(dy);
+                    const delta = useX ? dx : dy;
+                    if (Math.abs(delta) > 2) {
+                        const dir = delta > 0 ? 1 : -1;
+                        if (dir !== _state.lastStrokeDir && _state.lastStrokeDir !== 0) {
+                            _state.petStrokes++;
+                            if (_state.petStrokes % 3 === 0) {
+                                spawnHeart(pos.x, pos.y);
+                                if (navigator.vibrate) navigator.vibrate(5);
+                            }
                         }
+                        _state.lastStrokeDir = dir;
+                        _state.strokeTimer = 60;
                     }
-                    _state.lastStrokeDir = dir;
-                    _state.strokeTimer = 60;
                 }
             }
         }, { passive: false });
 
         canvas.addEventListener('touchend', (e) => {
-            if (_state.isDown && !_state.isDragging) {
+            if (_state.longPressTimer) { clearTimeout(_state.longPressTimer); _state.longPressTimer = null; }
+            if (_state.isDown && !_state.isDragging && !_state.longPressTriggered) {
                 const x = _state.x, y = _state.y;
                 if (isOverPet(x, y)) {
+                    if (navigator.vibrate) navigator.vibrate(10);
                     spawnRipple(x, y);
                     Events.emit('pet-poke', { x, y });
                 }
             }
             if (_state.petStrokes >= 4) {
+                if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
                 Events.emit('pet-pet', { strokes: _state.petStrokes });
             }
             _state.isDown = false;
             _state.isDragging = false;
             _state.petStrokes = 0;
             _state.lastStrokeDir = 0;
+            _state.longPressTriggered = false;
         });
     },
 

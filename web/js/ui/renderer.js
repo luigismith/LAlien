@@ -75,35 +75,68 @@ function getPetColors(pet) {
 // ---------------------------------------------------------------------------
 // Background
 // ---------------------------------------------------------------------------
+let _shootingStars = [];
+let _lastShootingStarTick = 0;
+
 function drawBackground(ctx, w, h, tick, pet) {
-    // Sky gradient: deep space to dark nebula
+    // Pet hue tint for sky
+    const petHue = (pet && pet.dna) ? pet.dna.coreHue : 200;
+    const tintAlpha = 0.04;
+
+    // Sky gradient: deep space with subtle pet-hue tint
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#010508');
-    grad.addColorStop(0.3, '#020A12');
-    grad.addColorStop(0.6, '#051520');
-    grad.addColorStop(0.85, '#0A1929');
-    grad.addColorStop(1, '#0F2233');
+    grad.addColorStop(0,    '#010508');
+    grad.addColorStop(0.25, '#020A14');
+    grad.addColorStop(0.55, '#051520');
+    grad.addColorStop(0.82, '#0A1929');
+    grad.addColorStop(1,    '#0F2233');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Nebula clouds (2 soft color blobs)
+    // Subtle hue tint overlay from pet's DNA color
+    ctx.save();
+    ctx.globalAlpha = tintAlpha;
+    const tintG = ctx.createRadialGradient(w * 0.5, h * 0.4, 0, w * 0.5, h * 0.4, w * 0.7);
+    tintG.addColorStop(0, `hsl(${petHue},60%,40%)`);
+    tintG.addColorStop(1, 'transparent');
+    ctx.fillStyle = tintG;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    // Nebula clouds (3 soft color blobs, more vivid)
     const nTime = tick * 0.0003;
     ctx.save();
-    ctx.globalAlpha = 0.06;
-    const n1x = w * 0.3 + Math.sin(nTime) * 50;
-    const n1y = h * 0.25 + Math.cos(nTime * 0.7) * 30;
-    const ng1 = ctx.createRadialGradient(n1x, n1y, 10, n1x, n1y, 200);
-    ng1.addColorStop(0, '#4060C0');
-    ng1.addColorStop(1, 'transparent');
+
+    // Nebula 1 — blue/indigo
+    ctx.globalAlpha = 0.13;
+    const n1x = w * 0.25 + Math.sin(nTime) * 60;
+    const n1y = h * 0.22 + Math.cos(nTime * 0.7) * 35;
+    const ng1 = ctx.createRadialGradient(n1x, n1y, 5, n1x, n1y, Math.min(w, h) * 0.45);
+    ng1.addColorStop(0,   `hsl(${(petHue + 20) % 360},80%,55%)`);
+    ng1.addColorStop(0.4, `hsl(${(petHue + 20) % 360},60%,35%)`);
+    ng1.addColorStop(1,   'transparent');
     ctx.fillStyle = ng1;
     ctx.fillRect(0, 0, w, h);
 
-    const n2x = w * 0.75 + Math.cos(nTime * 1.3) * 40;
-    const n2y = h * 0.35 + Math.sin(nTime * 0.9) * 25;
-    const ng2 = ctx.createRadialGradient(n2x, n2y, 10, n2x, n2y, 160);
-    ng2.addColorStop(0, '#A060E0');
-    ng2.addColorStop(1, 'transparent');
+    // Nebula 2 — violet/purple
+    ctx.globalAlpha = 0.10;
+    const n2x = w * 0.78 + Math.cos(nTime * 1.3) * 45;
+    const n2y = h * 0.30 + Math.sin(nTime * 0.9) * 28;
+    const ng2 = ctx.createRadialGradient(n2x, n2y, 5, n2x, n2y, Math.min(w, h) * 0.38);
+    ng2.addColorStop(0,   `hsl(${(petHue + 160) % 360},75%,50%)`);
+    ng2.addColorStop(0.5, `hsl(${(petHue + 140) % 360},55%,32%)`);
+    ng2.addColorStop(1,   'transparent');
     ctx.fillStyle = ng2;
+    ctx.fillRect(0, 0, w, h);
+
+    // Nebula 3 — warm accent, top center
+    ctx.globalAlpha = 0.07;
+    const n3x = w * 0.52 + Math.sin(nTime * 0.6 + 1) * 35;
+    const n3y = h * 0.10 + Math.cos(nTime * 0.5) * 20;
+    const ng3 = ctx.createRadialGradient(n3x, n3y, 5, n3x, n3y, Math.min(w, h) * 0.28);
+    ng3.addColorStop(0,   `hsl(${(petHue + 300) % 360},70%,60%)`);
+    ng3.addColorStop(1,   'transparent');
+    ctx.fillStyle = ng3;
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
 
@@ -111,43 +144,95 @@ function drawBackground(ctx, w, h, tick, pet) {
     if (!_stars) initStars(w, h);
     for (const s of _stars) {
         const twinkle = Math.sin(tick * 0.008 * s.speed + s.phase);
-        const brightness = 0.3 + twinkle * 0.35;
+        const brightness = 0.35 + twinkle * 0.4;
         if (brightness < 0.05) continue;
 
         ctx.save();
         ctx.globalAlpha = brightness;
 
         if (s.r > 1.0) {
-            // Brighter star with soft glow
-            const sg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 3);
-            sg.addColorStop(0, '#ffffff');
-            sg.addColorStop(0.4, 'rgba(200,220,255,0.4)');
-            sg.addColorStop(1, 'transparent');
+            // Brighter star with cross glow
+            const sg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 3.5);
+            sg.addColorStop(0,   '#ffffff');
+            sg.addColorStop(0.3, 'rgba(200,225,255,0.5)');
+            sg.addColorStop(1,   'transparent');
             ctx.fillStyle = sg;
-            ctx.fillRect(s.x - s.r * 3, s.y - s.r * 3, s.r * 6, s.r * 6);
+            ctx.fillRect(s.x - s.r * 4, s.y - s.r * 4, s.r * 8, s.r * 8);
+            // Cross spike
+            ctx.globalAlpha = brightness * 0.4;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(s.x - s.r * 5, s.y); ctx.lineTo(s.x + s.r * 5, s.y);
+            ctx.moveTo(s.x, s.y - s.r * 5); ctx.lineTo(s.x, s.y + s.r * 5);
+            ctx.stroke();
         } else {
-            ctx.fillStyle = '#C8DCFF';
+            ctx.fillStyle = s.layer === 2 ? '#D8ECFF' : '#C8DCFF';
             ctx.fillRect(s.x, s.y, s.r, s.r);
         }
         ctx.restore();
     }
 
+    // Shooting stars (occasional, ~every 8-12 seconds)
+    if (tick - _lastShootingStarTick > 300 + Math.floor(Math.random() * 200)) {
+        _lastShootingStarTick = tick;
+        if (Math.random() < 0.65) {
+            _shootingStars.push({
+                x: Math.random() * w * 0.7,
+                y: Math.random() * h * 0.4,
+                vx: 3 + Math.random() * 4,
+                vy: 1.5 + Math.random() * 2,
+                len: 60 + Math.random() * 80,
+                life: 1.0,
+            });
+        }
+    }
+    ctx.save();
+    _shootingStars = _shootingStars.filter(ss => ss.life > 0);
+    for (const ss of _shootingStars) {
+        ctx.globalAlpha = ss.life * 0.85;
+        const grad2 = ctx.createLinearGradient(ss.x, ss.y, ss.x - ss.len, ss.y - ss.len * 0.5);
+        grad2.addColorStop(0, '#FFFFFF');
+        grad2.addColorStop(1, 'transparent');
+        ctx.strokeStyle = grad2;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(ss.x, ss.y);
+        ctx.lineTo(ss.x - ss.len, ss.y - ss.len * 0.5);
+        ctx.stroke();
+        ss.x += ss.vx;
+        ss.y += ss.vy;
+        ss.life -= 0.035;
+    }
+    ctx.restore();
+
     // Horizon glow (ground)
     const groundY = h * 0.82;
-    const horizonGrad = ctx.createLinearGradient(0, groundY - 30, 0, h);
-    horizonGrad.addColorStop(0, 'transparent');
-    horizonGrad.addColorStop(0.3, 'rgba(62,207,207,0.015)');
-    horizonGrad.addColorStop(0.6, 'rgba(10,25,41,0.6)');
-    horizonGrad.addColorStop(1, 'rgba(15,34,51,0.9)');
+    const petHexHorizon = `hsl(${petHue},50%,35%)`;
+    const horizonGrad = ctx.createLinearGradient(0, groundY - 50, 0, h);
+    horizonGrad.addColorStop(0,   'transparent');
+    horizonGrad.addColorStop(0.25, `hsla(${petHue},50%,35%,0.06)`);
+    horizonGrad.addColorStop(0.55, 'rgba(10,25,41,0.65)');
+    horizonGrad.addColorStop(1,   'rgba(15,34,51,0.92)');
     ctx.fillStyle = horizonGrad;
-    ctx.fillRect(0, groundY - 30, w, h - groundY + 30);
+    ctx.fillRect(0, groundY - 50, w, h - groundY + 50);
+
+    // Horizon glow line
+    ctx.save();
+    const glowIntensity = 0.18 + Math.sin(tick * 0.004) * 0.04;
+    ctx.globalAlpha = glowIntensity;
+    const hg = ctx.createLinearGradient(0, groundY - 4, 0, groundY + 8);
+    hg.addColorStop(0, `hsl(${petHue},70%,60%)`);
+    hg.addColorStop(1, 'transparent');
+    ctx.fillStyle = hg;
+    ctx.fillRect(0, groundY - 4, w, 12);
+    ctx.restore();
 
     // Ground surface line
-    ctx.strokeStyle = 'rgba(62,207,207,0.12)';
+    ctx.strokeStyle = `hsla(${petHue},60%,65%,0.25)`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, groundY);
-    // Slightly undulating ground
     for (let x = 0; x <= w; x += 20) {
         const undulate = Math.sin(x * 0.008 + tick * 0.002) * 2;
         ctx.lineTo(x, groundY + undulate);
@@ -156,29 +241,38 @@ function drawBackground(ctx, w, h, tick, pet) {
 
     // Ground grid lines (perspective)
     ctx.save();
-    ctx.globalAlpha = 0.04;
-    ctx.strokeStyle = '#3ECFCF';
+    ctx.globalAlpha = 0.055;
+    ctx.strokeStyle = `hsl(${petHue},60%,65%)`;
     ctx.lineWidth = 0.5;
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= 7; i++) {
         const gy = groundY + i * i * 3;
         if (gy > h) break;
         ctx.beginPath();
-        ctx.moveTo(0, gy);
-        ctx.lineTo(w, gy);
+        ctx.moveTo(0, gy); ctx.lineTo(w, gy);
+        ctx.stroke();
+    }
+    // Vertical vanishing lines
+    ctx.globalAlpha = 0.03;
+    const vp = w * 0.5;
+    for (let i = -4; i <= 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(vp + i * w * 0.15, groundY);
+        ctx.lineTo(vp + i * w * 0.6, h);
         ctx.stroke();
     }
     ctx.restore();
 
     // Floating cosmic particles
     ctx.save();
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 18; i++) {
         const px = (i * 53.7 + tick * 0.05 * (0.3 + i * 0.1)) % w;
         const py = (i * 37.3 + Math.sin(tick * 0.003 + i) * 20) % (groundY - 10);
-        const pa = 0.15 + Math.sin(tick * 0.006 + i * 1.7) * 0.1;
+        const pa = 0.18 + Math.sin(tick * 0.006 + i * 1.7) * 0.12;
         ctx.globalAlpha = Math.max(0, pa);
-        ctx.fillStyle = i % 3 === 0 ? '#3ECFCF' : i % 3 === 1 ? '#D4A534' : '#A060E0';
+        const particleHue = (petHue + [0, 120, 240, 60, 180][i % 5]) % 360;
+        ctx.fillStyle = `hsl(${particleHue},80%,65%)`;
         ctx.beginPath();
-        ctx.arc(px, py, 1 + (i % 2), 0, Math.PI * 2);
+        ctx.arc(px, py, 1 + (i % 3) * 0.5, 0, Math.PI * 2);
         ctx.fill();
     }
     ctx.restore();
@@ -357,7 +451,7 @@ function getSecurityShake(needs, tick) {
 // ---------------------------------------------------------------------------
 // Egg
 // ---------------------------------------------------------------------------
-function drawEgg(ctx, cx, cy, tick) {
+function drawEgg(ctx, cx, cy, tick, pet) {
     const pulse = Math.sin(tick * 0.03) * 3;
     const glowAlpha = 0.3 + Math.sin(tick * 0.05) * 0.15;
 
@@ -395,6 +489,38 @@ function drawEgg(ctx, cx, cy, tick) {
 
     // Interaction area for egg
     Interactions.setPetPosition(cx, cy, 38);
+
+    // Hatching progress (shown below egg)
+    if (pet) {
+        const ageH   = pet.getAgeHours();
+        const touch  = pet.touchInteractions;
+        const needH  = 24;
+        const needT  = 3;
+        const pctAge   = Math.min(1, ageH / needH);
+        const pctTouch = Math.min(1, touch / needT);
+        const barW = 80;
+        const barH = 6;
+        const yBase = cy + 58;
+
+        // Time bar
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(cx - barW / 2, yBase, barW, barH);
+        ctx.fillStyle = pctAge >= 1 ? '#40C470' : '#3ECFCF';
+        ctx.fillRect(cx - barW / 2, yBase, barW * pctAge, barH);
+
+        // Touch bar
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(cx - barW / 2, yBase + 10, barW, barH);
+        ctx.fillStyle = pctTouch >= 1 ? '#40C470' : '#E060A0';
+        ctx.fillRect(cx - barW / 2, yBase + 10, barW * pctTouch, barH);
+
+        // Labels
+        ctx.fillStyle = 'rgba(224,224,224,0.55)';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${ageH}/${needH}h`, cx - barW / 2, yBase - 3);
+        ctx.fillText(`tocchi ${touch}/${needT}`, cx - barW / 2, yBase + 7);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -747,7 +873,7 @@ export const Renderer = {
         if (!pet.isAlive()) {
             drawDeathSequence(_ctx, pet, cx, cy, _tick);
         } else if (pet.isEgg()) {
-            drawEgg(_ctx, cx, cy, _tick);
+            drawEgg(_ctx, cx, cy, _tick, pet);
         } else {
             drawCreature(_ctx, pet, cx, cy, _tick);
         }

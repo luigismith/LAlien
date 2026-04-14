@@ -16,6 +16,7 @@ import { Persistence } from '../engine/persistence.js';
 import { SpeechBubble } from './speech-bubble.js';
 import { Needs, NeedType } from '../pet/needs.js';
 import { Death } from '../pet/death.js';
+import { SoundEngine } from '../audio/sound-engine.js';
 
 const SCREEN_IDS = {
     'setup': 'screen-setup',
@@ -83,8 +84,15 @@ export const Screens = {
     },
 
     show(screen) {
+        const prev = GameState.currentScreen;
         hideAll();
         GameState.currentScreen = screen;
+
+        // Whoosh when moving between screens (skip main<->egg silent transitions)
+        if (prev !== screen) {
+            if (screen === 'main' || screen === 'egg') SoundEngine.playScreenOut();
+            else SoundEngine.playScreenIn();
+        }
 
         if (screen === 'main' || screen === 'egg') {
             // Just show canvas + action bar
@@ -163,6 +171,7 @@ export const Screens = {
 
             // Thinking indicator
             this._addMessage(Pet.getName() + ' ' + I18n.get('chat_thinking'), 'system');
+            SoundEngine.playThinking();
 
             try {
                 const prompt = SystemPrompt.build();
@@ -200,9 +209,11 @@ export const Screens = {
                 if (micActive) return;
                 micActive = true;
                 micBtn.classList.add('recording');
+                SoundEngine.playMicOpen();
                 STTClient.startRecording(
                     (text) => {
                         if (text) {
+                            SoundEngine.playMicSuccess();
                             input.value = text;
                             send();
                         }
@@ -210,6 +221,7 @@ export const Screens = {
                         micActive = false;
                     },
                     (err) => {
+                        SoundEngine.playError();
                         showToast('Mic error: ' + err);
                         micBtn.classList.remove('recording');
                         micActive = false;
@@ -219,6 +231,7 @@ export const Screens = {
 
             const stopMic = () => {
                 if (!micActive) return;
+                SoundEngine.playMicClose();
                 STTClient.stopRecording();
             };
 
@@ -386,6 +399,7 @@ export const Screens = {
                 const provider = document.getElementById('settings-provider-select').value;
                 localStorage.setItem('lalien_provider', provider);
                 LLMClient.init(provider, key);
+                SoundEngine.playSuccess();
                 showToast('API key saved');
             }
         });
@@ -400,13 +414,73 @@ export const Screens = {
 
         document.getElementById('settings-time-mult')?.addEventListener('change', (e) => {
             GameState.timeMultiplier = parseInt(e.target.value);
+            localStorage.setItem('lalien_time_mult', GameState.timeMultiplier);
+        });
+
+        // TTS toggle
+        document.getElementById('settings-tts-toggle')?.addEventListener('change', (e) => {
+            SoundEngine.playToggle(e.target.checked);
+            import('./speech-bubble.js').then(m => m.SpeechBubble.setTTSEnabled(e.target.checked));
+            showToast(e.target.checked ? 'Voce attivata' : 'Voce disattivata');
+        });
+
+        // Tutorial toggle
+        document.getElementById('settings-tutorial-toggle')?.addEventListener('change', (e) => {
+            SoundEngine.playToggle(e.target.checked);
+            import('./tutorial.js').then(m => m.Tutorial.setEnabled(e.target.checked));
+            showToast(e.target.checked ? 'Tutorial attivo' : 'Tutorial disattivato');
+        });
+
+        // Reset tutorial
+        document.getElementById('btn-tutorial-reset')?.addEventListener('click', async () => {
+            const m = await import('./tutorial.js');
+            m.Tutorial.resetAll();
+            showToast('Tutorial ripristinato. Ricarica per rivederlo.');
+        });
+
+        // New pet (manual trigger from settings when pet is dead)
+        document.getElementById('btn-new-pet')?.addEventListener('click', async () => {
+            const { showRebirthScreen } = await import('../engine/game-loop.js');
+            this.show('main');
+            showRebirthScreen();
+        });
+
+        // Cloud logout
+        document.getElementById('btn-cloud-logout')?.addEventListener('click', async () => {
+            if (!(await showConfirm('Uscire dall\'account server? Il save resta salvato, potrai rientrare col PIN.'))) return;
+            const { CloudSync } = await import('../engine/cloud-sync.js');
+            CloudSync.logout();
+            showToast('Uscito. Ricarico...');
+            setTimeout(() => location.reload(), 1000);
         });
 
         document.getElementById('btn-graveyard-nav')?.addEventListener('click', () => this.show('graveyard'));
         document.getElementById('btn-lexicon-nav')?.addEventListener('click', () => this.show('lexicon'));
     },
 
-    _renderSettings() {
+    async _renderSettings() {
+        // Show logged-in username in account row
+        try {
+            const { CloudSync } = await import('../engine/cloud-sync.js');
+            const nameEl = document.getElementById('settings-account-name');
+            if (nameEl) {
+                if (CloudSync.isLoggedIn()) {
+                    const online = CloudSync.isOnline();
+                    nameEl.textContent = CloudSync.getUsername() + (online ? ' · online' : ' · offline');
+                    nameEl.style.color = online ? 'var(--cyan)' : 'var(--text-dim)';
+                } else {
+                    nameEl.textContent = 'Modalità locale';
+                    nameEl.style.color = 'var(--text-dim)';
+                }
+            }
+        } catch {}
+
+        // Show "new pet" button only if pet is dead/buried
+        const newBtn = document.getElementById('btn-new-pet');
+        const farewellBtn = document.getElementById('btn-farewell');
+        if (newBtn) newBtn.style.display = (!Pet.isAlive()) ? 'block' : 'none';
+        if (farewellBtn) farewellBtn.style.display = Pet.isAlive() ? 'block' : 'none';
+
         const lang = localStorage.getItem('lalien_language') || 'it';
         document.getElementById('settings-language').value = lang;
 
@@ -414,6 +488,11 @@ export const Screens = {
         document.getElementById('settings-provider-select').value = provider;
 
         document.getElementById('settings-time-mult').value = String(GameState.timeMultiplier);
+
+        const ttsEl = document.getElementById('settings-tts-toggle');
+        if (ttsEl) ttsEl.checked = localStorage.getItem('lalien_tts_enabled') !== '0';
+        const tutEl = document.getElementById('settings-tutorial-toggle');
+        if (tutEl) tutEl.checked = localStorage.getItem('lalien_tutorial_enabled') !== '0';
     },
 
     // ---- Minigames ----

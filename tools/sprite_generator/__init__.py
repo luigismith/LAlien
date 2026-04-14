@@ -1,1 +1,0 @@
-# Lalien Sprite Generator

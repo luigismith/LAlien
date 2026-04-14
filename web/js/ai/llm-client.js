@@ -14,6 +14,22 @@ let _lastCallTime = 0;
 
 // ---- Encryption helpers ----
 const PASSPHRASE = 'lalien-companion-local-key-v1'; // Not truly secret, just obscures plaintext in localStorage
+const HAS_SUBTLE = typeof crypto !== 'undefined' && !!crypto.subtle;
+if (!HAS_SUBTLE) {
+    console.warn('[LALIEN] crypto.subtle unavailable (insecure context). Falling back to base64 obfuscation. Serve over HTTPS to enable AES-GCM.');
+}
+
+// Fallback tag prefix so we can distinguish legacy AES ciphertexts from the fallback format
+const FALLBACK_TAG = 'b64x:';
+
+function xorObfuscate(text) {
+    const pass = PASSPHRASE;
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+        out += String.fromCharCode(text.charCodeAt(i) ^ pass.charCodeAt(i % pass.length));
+    }
+    return out;
+}
 
 async function deriveKey(passphrase) {
     const enc = new TextEncoder();
@@ -25,6 +41,9 @@ async function deriveKey(passphrase) {
 }
 
 async function encryptString(text) {
+    if (!HAS_SUBTLE) {
+        return FALLBACK_TAG + btoa(unescape(encodeURIComponent(xorObfuscate(text))));
+    }
     const key = await deriveKey(PASSPHRASE);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const enc = new TextEncoder();
@@ -36,6 +55,10 @@ async function encryptString(text) {
 }
 
 async function decryptString(b64) {
+    if (typeof b64 === 'string' && b64.startsWith(FALLBACK_TAG)) {
+        return xorObfuscate(decodeURIComponent(escape(atob(b64.slice(FALLBACK_TAG.length)))));
+    }
+    if (!HAS_SUBTLE) throw new Error('crypto.subtle unavailable; cannot decrypt legacy AES value');
     const key = await deriveKey(PASSPHRASE);
     const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
     const iv = raw.slice(0, 12);

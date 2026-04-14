@@ -21,6 +21,7 @@
         <div id="status-needs-dots"></div>
         <div id="status-right">
             <span id="status-age"></span>
+            <span id="status-cloud" class="offline" title="Sync server">&#9729;</span>
             <button id="btn-needs-expand" aria-label="Show needs">&#9776;</button>
         </div>
     </div>
@@ -36,6 +37,50 @@
 
     <!-- Main Canvas -->
     <canvas id="game-canvas" width="800" height="480"></canvas>
+
+    <!-- Rebirth Overlay (shown when pet is dead/buried) -->
+    <div id="screen-rebirth" class="screen-overlay hidden">
+        <div class="rebirth-container">
+            <h2 class="gold-text">Un seme nuovo attende</h2>
+            <p class="rebirth-epitaph" id="rebirth-epitaph"></p>
+            <p class="rebirth-text">Il cosmo dei Suoni non si esaurisce. Un altro syrma è caduto sul tuo mondo, se vuoi accoglierlo.</p>
+            <div class="rebirth-field">
+                <label for="rebirth-name">Nome del nuovo Lalìen</label>
+                <input type="text" id="rebirth-name" placeholder="Puoi scegliere dopo..." maxlength="32">
+            </div>
+            <div class="rebirth-buttons">
+                <button class="btn-primary" id="btn-rebirth-plant">Pianta il nuovo seme</button>
+                <button class="btn-link" id="btn-rebirth-graveyard">Visita il cimitero</button>
+            </div>
+            <p class="rebirth-note">Il cimitero dei ricordi, il lessico imparato e l'account del server restano con te.</p>
+        </div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="screen-login" class="screen-overlay hidden">
+        <div class="login-container">
+            <h1 class="gold-text">Lalìen Companion</h1>
+            <p class="login-subtitle">Inserisci il tuo PIN per accedere al tuo custodito</p>
+            <div id="login-form" class="login-form">
+                <div class="login-field">
+                    <label for="login-pin">PIN (4-8 cifre)</label>
+                    <input type="password" id="login-pin" inputmode="numeric" maxlength="8" placeholder="••••" autocomplete="off">
+                </div>
+                <div class="login-field" id="login-username-field" style="display:none">
+                    <label for="login-username">Nome custode (solo prima volta)</label>
+                    <input type="text" id="login-username" placeholder="Il tuo nome" maxlength="32">
+                </div>
+                <div id="login-error" class="login-error hidden"></div>
+                <button class="btn-primary" id="btn-login">Entra</button>
+                <p class="login-hint" id="login-hint-new">Nuovo qui? Scegli un PIN — verrà usato per recuperare il tuo account da qualsiasi dispositivo.</p>
+                <button class="btn-link" id="btn-login-offline">Continua senza account (solo locale)</button>
+            </div>
+            <div id="login-loading" class="login-loading hidden">
+                <div class="spinner"></div>
+                <p>Connessione al server…</p>
+            </div>
+        </div>
+    </div>
 
     <!-- Screen Overlays -->
     <div id="screen-setup" class="screen-overlay hidden">
@@ -169,7 +214,26 @@
                 </select>
             </div>
             <div class="settings-group">
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-tts-toggle" checked>
+                    <span>Voce del Lalìen (TTS)</span>
+                </label>
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-tutorial-toggle" checked>
+                    <span>Tutorial e suggerimenti</span>
+                </label>
+                <button class="btn-small" id="btn-tutorial-reset">Rivedi tutti i suggerimenti</button>
+            </div>
+            <div class="settings-group" id="settings-account-group">
+                <label>Account server</label>
+                <div class="settings-account-row">
+                    <span id="settings-account-name" class="settings-account-name">—</span>
+                    <button class="btn-small btn-logout" id="btn-cloud-logout">&#x21AA; Logout</button>
+                </div>
+            </div>
+            <div class="settings-group">
                 <button class="btn-danger" id="btn-farewell">Dire addio al Lalien</button>
+                <button class="btn-small" id="btn-new-pet" style="display:none">Pianta un nuovo seme</button>
             </div>
             <div class="settings-group">
                 <button class="btn-small" id="btn-export-save">Esporta salvataggio</button>

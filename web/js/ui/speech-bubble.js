@@ -1,9 +1,91 @@
 /**
- * speech-bubble.js -- Typewriter text effect with mood variants
+ * speech-bubble.js -- Typewriter text effect with mood variants + TTS
+ * Voice evolves with stage: baby-cub (high pitch) → adult → elder (deep)
  */
+import { Pet } from '../pet/pet.js';
+import { SoundEngine } from '../audio/sound-engine.js';
 
 let _timeout = null;
 let _typeInterval = null;
+
+// Mood → pitch/rate offsets (added on top of stage base)
+const MOOD_OFFSET = {
+    happy:   { pitch: +0.15, rate: +0.10 },
+    neutral: { pitch:  0.00, rate:  0.00 },
+    sad:     { pitch: -0.20, rate: -0.15 },
+    scared:  { pitch: +0.25, rate: +0.25 },
+};
+
+// Stage → base voice (pitch, rate) — max pitch=2.0, max rate=2.0 in Web Speech API
+// 0 Syrma (egg)  → sussurro squittio
+// 1 Lali-na      → neonato piccolissimo (cucciolo appena nato)
+// 2 Lali-shi     → cucciolo
+// 3 Lali-ko      → bambino
+// 4 Lali-ren     → adolescente (voce in transizione)
+// 5 Lali-vox     → adulto
+// 6 Lali-mere    → anziano (voce più profonda)
+// 7 Lali-thishi  → trascendente (eterea)
+const STAGE_VOICE = [
+    { pitch: 1.95, rate: 1.15, volume: 0.55 }, // Syrma - squittio
+    { pitch: 1.90, rate: 1.30, volume: 0.90 }, // Lali-na - cucciolo piccolissimo
+    { pitch: 1.75, rate: 1.25, volume: 1.00 }, // Lali-shi - cucciolo
+    { pitch: 1.50, rate: 1.15, volume: 1.00 }, // Lali-ko - bambino
+    { pitch: 1.25, rate: 1.05, volume: 1.00 }, // Lali-ren - adolescente
+    { pitch: 1.00, rate: 1.00, volume: 1.00 }, // Lali-vox - adulto
+    { pitch: 0.80, rate: 0.85, volume: 0.95 }, // Lali-mere - anziano
+    { pitch: 1.10, rate: 0.75, volume: 0.90 }, // Lali-thishi - trascendente (etereo lento)
+];
+
+function pickAlienVoice(stage) {
+    if (!('speechSynthesis' in window)) return null;
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return null;
+    const lang = (localStorage.getItem('lalien_language') || 'it').toLowerCase();
+    const inLang = voices.filter(v => v.lang.toLowerCase().startsWith(lang));
+    const pool = inLang.length ? inLang : voices;
+
+    // Cucciolo (stage 0-3): prefer female/child voice
+    if (stage <= 3) {
+        return pool.find(v => /child|kid|bambina|bambino|ragazz/i.test(v.name))
+            || pool.find(v => /female|donna|femm|alice|carla|elsa|samantha|zira/i.test(v.name))
+            || pool[0];
+    }
+    // Adolescente/adulto (4-5): voce adulta femminile di default
+    if (stage <= 5) {
+        return pool.find(v => /female|donna|femm|alice|carla|elsa|samantha/i.test(v.name))
+            || pool[0];
+    }
+    // Anziano/trascendente (6-7): voce più profonda, preferibilmente maschile
+    return pool.find(v => /male|uomo|mascul|luca|giorgio|diego|daniel|alex(?!a)/i.test(v.name))
+        || pool.find(v => /diego|daniel|google italiano/i.test(v.name))
+        || pool[0];
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function speak(text, mood) {
+    if (localStorage.getItem('lalien_tts_enabled') === '0') return;
+    if (!('speechSynthesis' in window)) return;
+    try {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        const stage = (typeof Pet !== 'undefined' && Pet.getStage) ? Pet.getStage() : 2;
+        const voice = pickAlienVoice(stage);
+        if (voice) { u.voice = voice; u.lang = voice.lang; }
+        const base = STAGE_VOICE[stage] || STAGE_VOICE[2];
+        const mo   = MOOD_OFFSET[mood] || MOOD_OFFSET.neutral;
+        u.pitch  = clamp(base.pitch + mo.pitch, 0.1, 2.0);
+        u.rate   = clamp(base.rate  + mo.rate,  0.5, 2.0);
+        u.volume = base.volume;
+        speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
+}
+
+// Preload voices (they load async on some browsers)
+if ('speechSynthesis' in window) {
+    speechSynthesis.addEventListener?.('voiceschanged', () => { /* voices ready */ });
+    setTimeout(() => speechSynthesis.getVoices(), 500);
+}
 
 export const SpeechBubble = {
     show(text, mood = 'neutral', duration = 3000) {
@@ -32,11 +114,30 @@ export const SpeechBubble = {
             }
         }, speed);
 
+        // Alien chirp (150ms) before TTS, to give the creature a "voice"
+        try {
+            const stage = (Pet && Pet.getStage) ? Pet.getStage() : 2;
+            SoundEngine.playChirp(stage);
+        } catch (_) {}
+
+        // Speak aloud
+        speak(text, mood);
+
         // Auto-dismiss (reading time: at least duration, plus 50ms per char)
         const readTime = Math.max(duration, text.length * 50 + 1500);
         _timeout = setTimeout(() => {
             bubble.classList.add('hidden');
         }, readTime);
+    },
+
+    /** Toggle TTS persistently */
+    setTTSEnabled(enabled) {
+        localStorage.setItem('lalien_tts_enabled', enabled ? '1' : '0');
+        if (!enabled && 'speechSynthesis' in window) speechSynthesis.cancel();
+    },
+
+    isTTSEnabled() {
+        return localStorage.getItem('lalien_tts_enabled') !== '0';
     },
 
     hide() {

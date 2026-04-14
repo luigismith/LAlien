@@ -7,8 +7,8 @@ import { Needs, NeedType } from './needs.js';
 
 // Evolution requirements table (index = current stage -> next)
 const REQUIREMENTS = [
-    // Stage 0 (EGG->LARVA): 24h + touch>10
-    { minAgeHours: 24, minAvgNeeds: 0, minTouch: 10, minVoice: 0, minVocab: 0, minConvs: 0, minDiary: 0, minBond: 0, minCosmic: 0, needsSustain: false },
+    // Stage 0 (EGG->LARVA): 24h + touch>3
+    { minAgeHours: 24, minAvgNeeds: 0, minTouch: 3, minVoice: 0, minVocab: 0, minConvs: 0, minDiary: 0, minBond: 0, minCosmic: 0, needsSustain: false },
     // Stage 1 (LARVA->PUPA): 72h + vocab>5 + avg>50%
     { minAgeHours: 72, minAvgNeeds: 50, minTouch: 0, minVoice: 0, minVocab: 5, minConvs: 0, minDiary: 0, minBond: 0, minCosmic: 0, needsSustain: false },
     // Stage 2 (PUPA->JUVENILE): 168h + vocab>15

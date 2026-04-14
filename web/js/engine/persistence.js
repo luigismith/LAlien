@@ -129,9 +129,9 @@ export const Persistence = {
         await this.saveGraveyard(graves);
     },
 
-    // --- Export / Import ---
-    async exportSave() {
-        const data = {
+    // --- Cloud sync helpers ---
+    async exportSaveObj() {
+        return {
             version: 1,
             timestamp: Date.now(),
             pet: await this.loadPet(),
@@ -142,8 +142,43 @@ export const Persistence = {
             settings: {
                 language: localStorage.getItem('lalien_language'),
                 provider: localStorage.getItem('lalien_provider'),
-            }
+                timeMult: localStorage.getItem('lalien_time_mult'),
+                ttsEnabled: localStorage.getItem('lalien_tts_enabled'),
+            },
+            // Cross-origin migration (HTTP ↔ HTTPS): bring API keys with the save
+            credentials: {
+                api_enc: localStorage.getItem('lalien_api_enc'),
+                stt_enc: localStorage.getItem('lalien_stt_key_enc'),
+            },
         };
+    },
+
+    async importSaveObj(data) {
+        if (!data || data.version !== 1) return;
+        if (data.pet)        await this.savePet(data.pet);
+        if (data.diary)      await this.saveDiary(data.diary);
+        if (data.vocabulary) await this.saveVocabulary(data.vocabulary);
+        if (data.memories)   await this.saveMemories(data.memories);
+        if (data.graveyard)  await this.saveGraveyard(data.graveyard);
+        if (data.settings) {
+            if (data.settings.language)   localStorage.setItem('lalien_language', data.settings.language);
+            if (data.settings.provider)   localStorage.setItem('lalien_provider', data.settings.provider);
+            if (data.settings.timeMult)   localStorage.setItem('lalien_time_mult', data.settings.timeMult);
+            if (data.settings.ttsEnabled) localStorage.setItem('lalien_tts_enabled', data.settings.ttsEnabled);
+        }
+        if (data.credentials) {
+            if (data.credentials.api_enc && !localStorage.getItem('lalien_api_enc')) {
+                localStorage.setItem('lalien_api_enc', data.credentials.api_enc);
+            }
+            if (data.credentials.stt_enc && !localStorage.getItem('lalien_stt_key_enc')) {
+                localStorage.setItem('lalien_stt_key_enc', data.credentials.stt_enc);
+            }
+        }
+    },
+
+    // --- Export / Import ---
+    async exportSave() {
+        const data = await this.exportSaveObj();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -160,15 +195,7 @@ export const Persistence = {
                 try {
                     const data = JSON.parse(e.target.result);
                     if (data.version !== 1) throw new Error('Unsupported save version');
-                    if (data.pet) await this.savePet(data.pet);
-                    if (data.diary) await this.saveDiary(data.diary);
-                    if (data.vocabulary) await this.saveVocabulary(data.vocabulary);
-                    if (data.memories) await this.saveMemories(data.memories);
-                    if (data.graveyard) await this.saveGraveyard(data.graveyard);
-                    if (data.settings) {
-                        if (data.settings.language) localStorage.setItem('lalien_language', data.settings.language);
-                        if (data.settings.provider) localStorage.setItem('lalien_provider', data.settings.provider);
-                    }
+                    await this.importSaveObj(data);
                     resolve();
                 } catch (err) {
                     reject(err);
