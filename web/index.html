@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#020A0A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="Lalien Companion - A living library from Echoa, learning your language one word at a time.">
+    <link rel="manifest" href="manifest.json">
+    <title>Lalien Companion</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Status Bar -->
+    <div id="status-bar">
+        <div id="status-left">
+            <span id="status-name">Syrma</span>
+            <span id="status-stage" class="status-tag"></span>
+        </div>
+        <div id="status-needs-dots"></div>
+        <div id="status-right">
+            <span id="status-age"></span>
+            <button id="btn-needs-expand" aria-label="Show needs">&#9776;</button>
+        </div>
+    </div>
+
+    <!-- Needs Overlay -->
+    <div id="needs-overlay" class="overlay hidden">
+        <div class="overlay-content needs-panel">
+            <h2 id="needs-title">Needs</h2>
+            <div id="needs-bars"></div>
+            <button class="btn-close" data-close="needs-overlay">&times;</button>
+        </div>
+    </div>
+
+    <!-- Main Canvas -->
+    <canvas id="game-canvas" width="800" height="480"></canvas>
+
+    <!-- Screen Overlays -->
+    <div id="screen-setup" class="screen-overlay hidden">
+        <div class="setup-container">
+            <div class="setup-step" data-step="0">
+                <h1 class="setup-title gold-text">Benvenuto nel cosmo dei Suoni</h1>
+                <p class="setup-intro">Un uovo-seme di Echoa e caduto sul tuo mondo. Dentro pulsa una voce che attende un custode.</p>
+                <div class="lore-text">
+                    <p>L'universo, nella cosmologia dei Lalien, non e fatto di materia. E fatto di suono. Ogni particella vibra, ogni atomo canta, ogni stella emette una nota che attraversa il vuoto non come luce, ma come frequenza pura.</p>
+                    <p>Le ultime madri-coro lanciarono i syrma nel vuoto, verso ogni stella che cantava. Uno di quei semi e arrivato a te.</p>
+                </div>
+                <button class="btn-primary" id="btn-setup-start">Inizia</button>
+            </div>
+            <div class="setup-step hidden" data-step="1">
+                <h2 class="gold-text" id="setup-lang-title">Scegli la tua lingua</h2>
+                <div class="setup-lang-grid">
+                    <button class="btn-lang" data-lang="it">Italiano</button>
+                    <button class="btn-lang" data-lang="en">English</button>
+                    <button class="btn-lang" data-lang="es">Espanol</button>
+                    <button class="btn-lang" data-lang="fr">Francais</button>
+                    <button class="btn-lang" data-lang="de">Deutsch</button>
+                </div>
+            </div>
+            <div class="setup-step hidden" data-step="2">
+                <h2 class="gold-text" id="setup-provider-title">Scegli il custode-voce</h2>
+                <div class="setup-provider-grid">
+                    <button class="btn-provider" data-provider="anthropic">Anthropic Claude</button>
+                    <button class="btn-provider" data-provider="openai">OpenAI GPT</button>
+                </div>
+                <div class="setup-field">
+                    <label for="setup-api-key" id="setup-api-label">Chiave API</label>
+                    <input type="password" id="setup-api-key" placeholder="sk-...">
+                    <p class="setup-hint" id="setup-api-warning">Questa chiave e legata al tuo Lalien. Cambiarla richiede dire addio.</p>
+                </div>
+                <div class="setup-field">
+                    <label for="setup-stt-key" id="setup-stt-label">Chiave OpenAI per voce (opzionale)</label>
+                    <input type="password" id="setup-stt-key" placeholder="sk-...">
+                    <p class="setup-hint" id="setup-stt-hint">Necessaria per parlare con la voce. Senza, solo tastiera.</p>
+                </div>
+            </div>
+            <div class="setup-step hidden" data-step="3">
+                <h2 class="gold-text" id="setup-name-title">Nome del tuo Lalien</h2>
+                <input type="text" id="setup-pet-name" placeholder="Puoi scegliere dopo...">
+                <button class="btn-primary" id="btn-setup-plant">Pianta il seme</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-conversation" class="screen-overlay hidden">
+        <div class="conversation-container">
+            <div class="conversation-header">
+                <button class="btn-back" id="btn-conv-back">&larr;</button>
+                <h2 id="conv-title">Conversazione</h2>
+            </div>
+            <div id="conversation-log"></div>
+            <div class="conversation-input">
+                <input type="text" id="conv-input" placeholder="Scrivi al tuo Lalien...">
+                <button id="btn-conv-send" class="btn-icon" aria-label="Send">&#9654;</button>
+                <button id="btn-conv-mic" class="btn-icon btn-mic" aria-label="Voice">&#127908;</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-diary" class="screen-overlay hidden">
+        <div class="diary-container">
+            <div class="diary-header">
+                <button class="btn-back" id="btn-diary-back">&larr;</button>
+                <h2 id="diary-title">Diario</h2>
+            </div>
+            <div id="diary-entries"></div>
+        </div>
+    </div>
+
+    <div id="screen-lexicon" class="screen-overlay hidden">
+        <div class="lexicon-container">
+            <div class="lexicon-header">
+                <button class="btn-back" id="btn-lexicon-back">&larr;</button>
+                <h2 id="lexicon-title">Lessico Lalien</h2>
+            </div>
+            <div id="lexicon-filters"></div>
+            <div id="lexicon-entries"></div>
+        </div>
+    </div>
+
+    <div id="screen-graveyard" class="screen-overlay hidden">
+        <div class="graveyard-container">
+            <div class="graveyard-header">
+                <button class="btn-back" id="btn-grave-back">&larr;</button>
+                <h2 id="graveyard-title">Cimitero dei Ricordi</h2>
+            </div>
+            <div id="graveyard-entries"></div>
+        </div>
+    </div>
+
+    <div id="screen-settings" class="screen-overlay hidden">
+        <div class="settings-container">
+            <div class="settings-header">
+                <button class="btn-back" id="btn-settings-back">&larr;</button>
+                <h2 id="settings-title-text">Impostazioni</h2>
+            </div>
+            <div class="settings-group">
+                <label id="settings-lang-label">Lingua</label>
+                <select id="settings-language">
+                    <option value="it">Italiano</option>
+                    <option value="en">English</option>
+                    <option value="es">Espanol</option>
+                    <option value="fr">Francais</option>
+                    <option value="de">Deutsch</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label id="settings-provider-label">Provider AI</label>
+                <select id="settings-provider-select">
+                    <option value="anthropic">Anthropic Claude</option>
+                    <option value="openai">OpenAI GPT</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label id="settings-api-label">Chiave API</label>
+                <input type="password" id="settings-api-key">
+                <button class="btn-small" id="btn-settings-save-key">Salva</button>
+            </div>
+            <div class="settings-group">
+                <label>Time multiplier (debug)</label>
+                <select id="settings-time-mult">
+                    <option value="1">1x (real time)</option>
+                    <option value="60">60x (1 min = 1 hour)</option>
+                    <option value="360">360x (1 min = 6 hours)</option>
+                    <option value="3600">3600x (1 sec = 1 hour)</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <button class="btn-danger" id="btn-farewell">Dire addio al Lalien</button>
+            </div>
+            <div class="settings-group">
+                <button class="btn-small" id="btn-export-save">Esporta salvataggio</button>
+                <button class="btn-small" id="btn-import-save">Importa salvataggio</button>
+                <input type="file" id="import-file" accept=".json" class="hidden">
+            </div>
+            <div class="settings-group">
+                <button class="btn-small" id="btn-graveyard-nav">Cimitero dei Ricordi</button>
+                <button class="btn-small" id="btn-lexicon-nav">Lessico Lalien</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-minigame" class="screen-overlay hidden">
+        <div class="minigame-container">
+            <div class="minigame-header">
+                <button class="btn-back" id="btn-minigame-back">&larr;</button>
+                <h2 id="minigame-title">Gioco</h2>
+                <span id="minigame-score">0</span>
+            </div>
+            <canvas id="minigame-canvas" width="800" height="400"></canvas>
+            <div id="minigame-message" class="hidden"></div>
+        </div>
+    </div>
+
+    <div id="screen-minigame-select" class="screen-overlay hidden">
+        <div class="minigame-select-container">
+            <div class="minigame-select-header">
+                <button class="btn-back" id="btn-minigame-select-back">&larr;</button>
+                <h2>Rituali di legame</h2>
+            </div>
+            <div class="minigame-select-grid">
+                <button class="btn-game-select" data-game="echo">
+                    <span class="game-icon">&#9834;</span>
+                    <span class="game-name">Thishi-Revosh</span>
+                    <span class="game-desc">Memoria dell'Eco</span>
+                </button>
+                <button class="btn-game-select" data-game="clean">
+                    <span class="game-icon">&#10024;</span>
+                    <span class="game-name">Miska-Vythi</span>
+                    <span class="game-desc">Pulizia di Luce</span>
+                </button>
+                <button class="btn-game-select" data-game="star">
+                    <span class="game-icon">&#9733;</span>
+                    <span class="game-name">Selath-Nashi</span>
+                    <span class="game-desc">Gioia Stellare</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Speech Bubble -->
+    <div id="speech-bubble" class="hidden">
+        <div id="speech-text"></div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div id="action-bar">
+        <button class="btn-action" data-action="feed" id="btn-feed">
+            <span class="action-icon">&#127860;</span>
+            <span class="action-label">Cibo</span>
+        </button>
+        <button class="btn-action" data-action="sleep" id="btn-sleep">
+            <span class="action-icon">&#127769;</span>
+            <span class="action-label">Sonno</span>
+        </button>
+        <button class="btn-action" data-action="clean" id="btn-clean">
+            <span class="action-icon">&#10024;</span>
+            <span class="action-label">Pulizia</span>
+        </button>
+        <button class="btn-action" data-action="play" id="btn-play">
+            <span class="action-icon">&#127922;</span>
+            <span class="action-label">Gioco</span>
+        </button>
+        <button class="btn-action" data-action="talk" id="btn-talk">
+            <span class="action-icon">&#128172;</span>
+            <span class="action-label">Parla</span>
+        </button>
+        <button class="btn-action" data-action="caress" id="btn-caress">
+            <span class="action-icon">&#128400;</span>
+            <span class="action-label">Coccole</span>
+        </button>
+        <button class="btn-action" data-action="meditate" id="btn-meditate">
+            <span class="action-icon">&#10026;</span>
+            <span class="action-label">Meditazione</span>
+        </button>
+        <button class="btn-action" data-action="settings" id="btn-settings">
+            <span class="action-icon">&#9881;</span>
+            <span class="action-label">Impostazioni</span>
+        </button>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="hidden"></div>
+
+    <!-- Confirm Dialog -->
+    <div id="confirm-dialog" class="overlay hidden">
+        <div class="overlay-content confirm-panel">
+            <p id="confirm-text"></p>
+            <div class="confirm-buttons">
+                <button class="btn-primary" id="confirm-yes">Si</button>
+                <button class="btn-secondary" id="confirm-no">No</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/engine/game-loop.js"></script>
+    <script>
+        // Unregister stale service workers, then optionally re-register
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                regs.forEach(r => r.unregister());
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,2632 @@
+{
+  "version": 1,
+  "has_mood_contact_sheet": true,
+  "stages": [
+    {
+      "id": 0,
+      "name": "syrma",
+      "dir": "stage_0_syrma",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "lalina",
+      "dir": "stage_1_lalina",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "lalishi",
+      "dir": "stage_2_lalishi",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "laliko",
+      "dir": "stage_3_laliko",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "hungry",
+            "idle",
+            "love",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "laliren",
+      "dir": "stage_4_laliren",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "lalivox",
+      "dir": "stage_5_lalivox",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "lalimere",
+      "dir": "stage_6_lalimere",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "lalithishi",
+      "dir": "stage_7_lalithishi",
+      "has_contact_sheet": true,
+      "variants": [
+        {
+          "id": 0,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 1,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 2,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 3,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 4,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 5,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 6,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 7,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 8,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 9,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 10,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 11,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 12,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 13,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 14,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        },
+        {
+          "id": 15,
+          "animations": [
+            "dead",
+            "dying",
+            "eat",
+            "escaping",
+            "evolving",
+            "happy",
+            "idle",
+            "play",
+            "sad",
+            "sick",
+            "sing",
+            "sleep",
+            "transcending"
+          ],
+          "has_meta": true,
+          "has_preview": true
+        }
+      ]
+    }
+  ]
+}
