@@ -24,6 +24,16 @@ desktop.ini
 # Secrets (never commit API keys)
 sd_card_template/certs/*.pem
 sd_card_template/certs/*.key
+.env
+.env.*
+*.pem
+*.key
+
+# Claude Code local settings — can include allowed-command patterns that
+# embed inline credentials. NEVER commit.
+.claude/settings.local.json
+.claude/projects/
+.claude/shell-snapshots/
 
 # Generated sprites (large, regenerable)
 # sd_card_template/sprites/ — uncomment if too large for git
