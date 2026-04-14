@@ -107,22 +107,21 @@ function renderLoop() {
 function handleResize() {
     const canvas = document.getElementById('game-canvas');
     const statusH = 40;
-    const actionH = 70;
+    const actionBar = document.getElementById('action-bar');
+    const actionH = actionBar ? actionBar.offsetHeight : 70;
     const availH = window.innerHeight - statusH - actionH;
     const availW = window.innerWidth;
-    const aspect = 800 / 480;
-    let w, h;
-    if (availW / availH > aspect) {
-        h = availH;
-        w = h * aspect;
-    } else {
-        w = availW;
-        h = w / aspect;
-    }
+
+    // Fill available space entirely — no fixed aspect ratio
+    const w = availW;
+    const h = availH;
+
+    canvas.width = w;
+    canvas.height = h;
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
 
-    Renderer.setScale(w / 800, h / 480);
+    Renderer.setScale(1, 1);
 }
 
 // ---------------------------------------------------------------------------

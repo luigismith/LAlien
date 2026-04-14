@@ -119,8 +119,7 @@ html, body {
 #game-canvas {
     position: fixed;
     top: 40px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
 }
@@ -921,14 +920,21 @@ html, body {
 
 /* ---- Responsive ---- */
 @media (max-width: 480px) {
+    #action-bar {
+        height: auto;
+        padding: 4px 4px;
+        gap: 3px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
     .btn-action {
-        padding: 4px 6px;
-        min-width: 44px;
+        padding: 4px 4px;
+        min-width: 0;
+        flex: 0 0 calc(25% - 4px);
     }
     .action-label { font-size: 8px; }
-    .action-icon { font-size: 18px; }
-    #action-bar { height: 60px; }
-    #speech-bubble { max-width: 92vw; }
+    .action-icon { font-size: 16px; }
+    #speech-bubble { max-width: 92vw; bottom: 110px; }
     .setup-container { padding: 20px 16px; }
     .setup-title { font-size: 20px; }
 }
