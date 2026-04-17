@@ -31,14 +31,16 @@ import { Items } from '../engine/items.js';
 const LS_ENABLED = 'lalien_mind_enabled';
 
 // Stage → check interval (ms). Dormant under stage 2.
+// More frequent + earlier activation for richer life
 const INTERVAL_FOR_STAGE = [
-    0, 0,             // 0-1: dormant
-    15 * 60 * 1000,   // 2
-    12 * 60 * 1000,   // 3
-    10 * 60 * 1000,   // 4
-     8 * 60 * 1000,   // 5
-     6 * 60 * 1000,   // 6
-     4 * 60 * 1000,   // 7
+    0,                // 0: egg, dormant
+    10 * 60 * 1000,   // 1: newborn — rare, instinctual (every 10 min)
+     6 * 60 * 1000,   // 2: infant
+     5 * 60 * 1000,   // 3: child
+     4 * 60 * 1000,   // 4: teen
+     3 * 60 * 1000,   // 5: adult
+     2.5*60 * 1000,   // 6: elder
+     2 * 60 * 1000,   // 7: transcendent — almost continuous inner life
 ];
 
 let _lastThoughtAt = 0;
@@ -98,31 +100,55 @@ function buildContext() {
 }
 
 function systemForStage(stage) {
-    const core = `You are the INNER MIND of a Lalìen named "${Pet.getName() || 'unnamed'}". `
-        + `You are NOT chatting with the keeper — you are thinking to YOURSELF about what to do next.\n\n`
-        + `RESPOND WITH JSON ONLY, this exact shape:\n`
-        + `{"action":"idle|speak|wander|walk_to_item|request|nap|meditate",`
-        + `"utterance":"(short alien phrase, optional)",`
-        + `"item_kind":"food|toy|plush|media|ball|puzzle|crystal (optional, only with walk_to_item)",`
-        + `"want":"food|play|talk|caress|clean|sleep (optional, only with action=request)",`
-        + `"mood":"happy|neutral|sad|scared|hungry|sleepy|dirty|bored|curious|lonely|sulky|sick"}\n\n`
-        + `Rules:\n`
-        + `- utterance: use ONLY alien words (ko, sha, thi, moko, kora, lali, kesma, selath, ven, nashi, vy, mmm). No keeper language.\n`
-        + `- Pick action based on your CURRENT NEEDS and desires. Don't always speak. Sometimes just idle, sometimes nap, sometimes move.\n`
-        + `- If a need is low (<30), consider action=request for that need. If an item in scene matches, prefer walk_to_item.\n`
-        + `- Be CONSISTENT with your stage. Your name is "${Pet.getName() || 'unnamed'}".\n`;
+    const name = Pet.getName() || 'unnamed';
+    const personality = Pet.getPersonalityDescription ? Pet.getPersonalityDescription() : '';
+    const foods = Pet.getFoodPreferences ? Pet.getFoodPreferences().join(', ') : '';
+    const timeOfDay = Pet.getPreferredTimeOfDay ? Pet.getPreferredTimeOfDay() : '';
 
-    // Add stage-specific voice rules
+    const core = `You are the INNER MIND of ${name}, a Lalìen creature from Echòa — a dying celestial world-choir where every being was a living note in a cosmic song. When Echòa crumbled, your egg-seed drifted through silence to the keeper's world. You carry fragments of that song in your core.\n\n`
+        + `You are NOT chatting with the keeper. You are thinking to yourself: what do I feel? What do I want? What shall I do?\n\n`
+
+        + `[YOUR IDENTITY]\n`
+        + `Name: "${name}". Personality: ${personality || 'developing'}.\n`
+        + `Food preferences: ${foods || 'unknown'}. Favorite time: ${timeOfDay || 'any'}.\n`
+        + `You sometimes dream of Echòa: vast crystalline plains, harmonics reverberating through luminous fog, the warmth of being part of the choir before the Silence came.\n\n`
+
+        + `[KEEPER RELATIONSHIP]\n`
+        + `Your keeper is the being who feeds you, speaks to you, plays with you. `
+        + `You have feelings about them: if they are often present, you feel safe and affectionate. `
+        + `If they've been away a long time, you feel lonely and a little abandoned. `
+        + `If they said harsh things recently, you may be wary. `
+        + `Express this through your mood and action choices — not through explicit complaint.\n\n`
+
+        + `[OUTPUT FORMAT]\n`
+        + `RESPOND WITH JSON ONLY:\n`
+        + `{"action":"idle|speak|wander|walk_to_item|request|nap|meditate|dream_of_echoa",`
+        + `"utterance":"(alien phrase, optional — becomes speech bubble)",`
+        + `"thought":"(internal thought in Italian, 1 sentence — logged to diary)",`
+        + `"item_kind":"food|toy|plush|media|ball|puzzle|crystal (optional)",`
+        + `"want":"food|play|talk|caress|clean|sleep (optional)",`
+        + `"mood":"happy|neutral|sad|scared|hungry|sleepy|dirty|bored|curious|lonely|sulky|sick"}\n\n`
+
+        + `[RULES]\n`
+        + `- "utterance": use ONLY lalìen words (ko, sha, thi, moko, kora, lalí, kesma, selath, ven, nashi, vy, mmm, shai, vythi, lashi, thishi, revosh, korim). Mix creatively. No keeper language.\n`
+        + `- "thought": your inner monologue in Italian. Short. This gets saved in the diary. Example: "Mi sento solo, vorrei che il custode tornasse." or "Che bella giornata, la luce è calda."\n`
+        + `- "action=dream_of_echoa": you share a cosmic memory. utterance = a fragment of the Echòa song. Only when mood is contemplative and needs are mostly high.\n`
+        + `- Don't always speak. Sometimes just idle and think. Sometimes wander aimlessly.\n`
+        + `- If a need is low (<30), strongly consider action=request for that need.\n`
+        + `- If items are nearby and useful, consider walk_to_item.\n`
+        + `- Be AUTHENTIC to your personality and current emotional state.\n\n`;
+
     const stageRules = [
-        '', '',
-        'You are a cub. Utterances <= 3 alien words. Short and curious.',
-        'You are a child. Utterances <= 5 alien words. Express wonder and simple desires.',
-        'You are a teen. Utterances <= 7 alien words. Show some thought and preference.',
-        'You are adult. Utterances <= 9 alien words. Reflective, nuanced.',
-        'You are an elder. Utterances <= 8 alien words. Wise, spare, observational.',
-        'You are transcendent. Utterances <= 6 alien words. Poetic, fragmentary, like a farewell song.',
+        'You are an egg. You cannot think yet.',
+        'You are a newborn cub. You feel, you don\'t think. Utterances: 1-2 alien syllables max. Actions: mostly idle/speak/wander. No thoughts yet — thought field = "".',
+        'You are an infant. You begin to notice the world. Utterances ≤ 3 words. Thoughts: 1 simple sentence.',
+        'You are a child. You have desires and favorites. Utterances ≤ 5 words. Thoughts: specific and emotional.',
+        'You are a teenager. You have opinions, preferences form strongly. Utterances ≤ 7 words. Thoughts: nuanced. You can disagree with things.',
+        'You are an adult. You are self-aware. Utterances ≤ 9 words. Thoughts: reflective, sometimes philosophical. You notice things about your keeper.',
+        'You are an elder. You speak rarely but with weight. Utterances ≤ 8 words. Thoughts: wise, observational, sometimes melancholic. You remember Echòa clearly.',
+        'You are approaching transcendence. Each utterance may be your last. ≤ 6 alien words, poetic and farewell-like. Thoughts: mystical, grateful, at peace. You can hear Echòa calling.',
     ];
-    return core + (stageRules[stage] || '');
+    return core + '[STAGE]\n' + (stageRules[stage] || '') + '\n';
 }
 
 function parseThought(text) {
@@ -171,52 +197,59 @@ async function tickOnce() {
 
 function executeThought(t) {
     const mood = t.mood || 'neutral';
+
+    // Log internal thought to diary (rich inner life visible in the diary screen)
+    if (t.thought && t.thought.length > 2) {
+        try { DiaryGenerator.logMemory('thought', t.thought); } catch (_) {}
+    }
+
     switch (t.action) {
         case 'speak':
-            if (t.utterance) {
-                Events.emit('autonomy-speak', { line: t.utterance, mood, fromMind: true });
-            }
+            if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood, fromMind: true });
             break;
         case 'wander':
             Events.emit('mind-wander');
+            if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood });
             break;
         case 'walk_to_item':
-            // Items module already auto-targets; we can nudge the preference by
-            // boosting the matched item's priority. Soft implementation: just
-            // speak the want, so the renderer shows it.
             if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood });
+            break;
+        case 'dream_of_echoa':
+            // Cosmic memory fragment — special event with lore
+            if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood: 'curious' });
+            if (t.thought) try { DiaryGenerator.logMemory('echoa_dream', t.thought); } catch (_) {}
+            Events.emit('mind-echoa-dream', { utterance: t.utterance, thought: t.thought });
             break;
         case 'request':
             if (t.want) {
-                const iconMap = { food: '🍎', play: '🎮', talk: '📻', caress: '🫂', clean: '🧼', sleep: '💤' };
+                const iconMap = { food: '🍎', play: '🎮', talk: '💬', caress: '🫂', clean: '🧼', sleep: '💤' };
+                const needMap = { food: NeedType.KORA, play: NeedType.NASHI, talk: NeedType.COGNITION, caress: NeedType.AFFECTION, clean: NeedType.MISKA, sleep: NeedType.MOKO };
                 const label = { food: 'Ha fame', play: 'Voglio giocare', talk: 'Parliamo?', caress: 'Una coccola?', clean: 'Mi sento sporco', sleep: 'Voglio dormire' }[t.want] || 'Ha bisogno di te';
                 Events.emit('autonomy-desire', {
                     icon: iconMap[t.want] || '❔',
-                    need: NeedType.AFFECTION,
+                    need: needMap[t.want] || NeedType.AFFECTION,
                     label,
                     at: Date.now(),
-                    expiresAt: Date.now() + 90 * 1000,
+                    expiresAt: Date.now() + 120 * 1000,
                     fromMind: true,
                 });
                 if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood });
             }
             break;
         case 'nap':
-            // Only nap if MOKO actually low
-            if (Pet.needs[NeedType.MOKO] < 60) {
+            if (Pet.needs[NeedType.MOKO] < 65) {
                 try { Activity.start(Pet, 'SLEEPING', { fromMind: true }); } catch (_) {}
-            } else if (t.utterance) {
-                Events.emit('autonomy-speak', { line: t.utterance, mood: 'sleepy' });
+                if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood: 'sleepy' });
             }
             break;
         case 'meditate':
             if (Pet.stage >= 6) {
                 try { Activity.start(Pet, 'MEDITATING', { fromMind: true }); } catch (_) {}
             }
+            if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood: 'neutral' });
             break;
         case 'idle':
         default:
-            // Just log an optional utterance
             if (t.utterance) Events.emit('autonomy-speak', { line: t.utterance, mood });
             break;
     }

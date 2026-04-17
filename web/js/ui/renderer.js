@@ -84,19 +84,62 @@ let _shootingStars = [];
 let _lastShootingStarTick = 0;
 
 function drawBackground(ctx, w, h, tick, pet) {
-    // Pet hue tint for sky
     const petHue = (pet && pet.dna) ? pet.dna.coreHue : 200;
-    const tintAlpha = 0.04;
+    const stage = pet ? pet.stage : 0;
+    const hour = new Date().getHours();
 
-    // Sky gradient: deep space with subtle pet-hue tint
+    // Day/night brightness: 0 (midnight) to 1 (noon)
+    // 6am=0.3, 8am=0.7, noon=1, 6pm=0.6, 9pm=0.2, midnight=0
+    const dayLight = Math.max(0, Math.min(1,
+        hour >= 6 && hour < 12  ? (hour - 6) / 6 :
+        hour >= 12 && hour < 18 ? 1 - (hour - 12) / 12 :
+        hour >= 18 && hour < 22 ? 0.5 - (hour - 18) / 8 :
+        0.05
+    ));
+    const nightDim = 1 - dayLight * 0.5;  // 0.5 at noon (brighter), 1.0 at midnight (full dark)
+
+    // Stage-specific sky palette (each stage has a unique cosmic atmosphere)
+    const SKY_PALETTES = [
+        // 0 Syrma: deep womb-violet nebula
+        ['#0A0418','#120820','#1A0C30','#0D0620','#080410'],
+        // 1 Lali-na: soft lavender-pink dawn
+        ['#0C0818','#180C28','#201438','#180E30','#100820'],
+        // 2 Lali-shi: teal-blue curiosity sky
+        ['#020A10','#041018','#061822','#082028','#0A2830'],
+        // 3 Lali-ko: warm orange-purple adventure
+        ['#080408','#141018','#1A1025','#201830','#281E38'],
+        // 4 Lali-ren: deep blue teenage contemplation
+        ['#010510','#040C1A','#081428','#0C1C34','#102440'],
+        // 5 Lali-vox: balanced cosmic teal-gold
+        ['#020808','#041210','#061A18','#082420','#0A2E28'],
+        // 6 Lali-mere: dark indigo-grey wisdom
+        ['#060608','#0C0C10','#121218','#181820','#202028'],
+        // 7 Lali-thishi: ethereal white-silver transcendence
+        ['#080A10','#101418','#182024','#202830','#283038'],
+    ];
+    const pal = SKY_PALETTES[stage] || SKY_PALETTES[0];
+
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0,    '#010508');
-    grad.addColorStop(0.25, '#020A14');
-    grad.addColorStop(0.55, '#051520');
-    grad.addColorStop(0.82, '#0A1929');
-    grad.addColorStop(1,    '#0F2233');
+    grad.addColorStop(0,    pal[0]);
+    grad.addColorStop(0.25, pal[1]);
+    grad.addColorStop(0.50, pal[2]);
+    grad.addColorStop(0.75, pal[3]);
+    grad.addColorStop(1,    pal[4]);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
+
+    // Daylight warm wash overlay
+    if (dayLight > 0.1) {
+        ctx.save();
+        ctx.globalAlpha = dayLight * 0.12;
+        const warmGrad = ctx.createRadialGradient(w * 0.5, h * 0.1, 10, w * 0.5, h * 0.5, h * 0.8);
+        warmGrad.addColorStop(0, '#FFE8A0');
+        warmGrad.addColorStop(0.5, '#D4A534');
+        warmGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = warmGrad;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+    }
 
     // Subtle hue tint overlay from pet's DNA color
     ctx.save();

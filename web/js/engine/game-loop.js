@@ -557,6 +557,16 @@ Events.on('autonomy-desire-fulfilled', (d) => {
 Events.on('autonomy-desire-expire', () => {
     SpeechBubble.show('sha…', 'sad', 1500);
 });
+// Echòa dream: cosmic memory flash + diary + golden sparkles
+Events.on('mind-echoa-dream', (ev) => {
+    try {
+        import('../ui/emotive-effects.js').then(m => {
+            m.EmotiveEffects.flash('#D4A534', 0.4);
+            m.EmotiveEffects.sparkles(400, 300, 10, '#FFE899');
+        });
+    } catch (_) {}
+    if (ev && ev.thought) showToast('💫 ' + ev.thought, 7000);
+});
 
 // Circadian events
 Events.on('rhythm-morning', () => {
