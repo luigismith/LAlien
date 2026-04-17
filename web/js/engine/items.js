@@ -103,7 +103,6 @@ function consumeItem(it) {
             break;
     }
     Events.emit('item-consumed', { action: it.action, x: it.x, y: it.y });
-    // Decrement uses or delete
     if (def.uses && it.usesLeft > 1) {
         it.usesLeft--;
         it.lastUseAt = now();
@@ -111,6 +110,7 @@ function consumeItem(it) {
         _items = _items.filter(o => o !== it);
         if (_targetItemId === it.id) _targetItemId = null;
     }
+    try { localStorage.setItem('lalien_items', JSON.stringify(_items)); } catch (_) {}
 }
 
 export const Items = {
@@ -119,8 +119,9 @@ export const Items = {
     /** Logic tick — expire old items, advance pet position toward target */
     tick(pet, dt) {
         const t = now();
-        // Expire
+        const before = _items.length;
         _items = _items.filter(it => t - it.createdAt < ITEM_TYPES[it.action].lifespanMs);
+        if (_items.length !== before) this._save();  // persist expiry
 
         if (!pet || !pet.isAlive || !pet.isAlive() || pet.isEgg()) return;
         const act = Activity.getType(pet);
@@ -201,13 +202,35 @@ export const Items = {
             lastUseAt: now(),
         };
         _items.push(it);
+        this._save();
         Events.emit('item-spawned', { action, x: clampedX, y: finalY });
         return it;
     },
 
     getAll() { return [..._items]; },
-    clear() { _items = []; _targetItemId = null; },
+    clear() { _items = []; _targetItemId = null; this._save(); },
     setStage(w, h) { _stageWidth = w; _stageHeight = h; },
+
+    _save() {
+        try { localStorage.setItem('lalien_items', JSON.stringify(_items)); } catch (_) {}
+    },
+    _load() {
+        try {
+            const raw = localStorage.getItem('lalien_items');
+            if (raw) {
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr)) {
+                    // Filter expired
+                    const now = Date.now();
+                    _items = arr.filter(it => {
+                        const def = ITEM_TYPES[it.action];
+                        return def && (now - it.createdAt < def.lifespanMs);
+                    });
+                    _nextId = _items.reduce((m, it) => Math.max(m, (it.id || 0) + 1), _nextId);
+                }
+            }
+        } catch (_) {}
+    },
     /** Drawn in renderer — returns list to paint */
     draw(ctx, tick) {
         const t = now();

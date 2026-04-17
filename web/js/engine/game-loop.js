@@ -295,6 +295,9 @@ async function resumeAfterLogin(serverOnline) {
     // Circadian rhythm + dream generation during long sleep
     Rhythms.init();
 
+    // Restore persisted items from localStorage
+    Items._load();
+
     // LLM-driven inner life — higher cognition scaled with stage
     Mind.init();
 
