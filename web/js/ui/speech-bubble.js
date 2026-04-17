@@ -120,6 +120,21 @@ export const SpeechBubble = {
         } catch (_) {}
         // Also block if game-loop flagged sleeping (set by renderer/activity tick)
         if (window._lalienPetSleeping) return;
+        // Sanitize: if text looks like raw JSON from LLM, extract just the utterance
+        if (text && text.includes('"action"')) {
+            try {
+                const m = text.match(/\{[\s\S]*\}/);
+                if (m) {
+                    const j = JSON.parse(m[0]);
+                    text = j.utterance || j.question || j.thought || j.greeting || text;
+                }
+            } catch (_) {
+                // Strip JSON artifacts manually
+                text = text.replace(/\{[^}]*\}/g, '').replace(/[{}"]/g, '').trim();
+            }
+            if (!text || text.length < 1) return;
+        }
+
         const bubble = document.getElementById('speech-bubble');
         const textEl = document.getElementById('speech-text');
 

@@ -327,7 +327,16 @@ async function resumeAfterLogin(serverOnline) {
         if (LLMClient.isAvailable && LLMClient.isAvailable()) {
             try {
                 const prompt = SystemPrompt.build(sent);
-                const response = await LLMClient.chat(prompt, text);
+                let response = await LLMClient.chat(prompt, text);
+                // Sanitize: if LLM returned JSON instead of natural text, extract utterance
+                if (response && response.includes('"action"')) {
+                    try {
+                        const j = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
+                        response = j.utterance || j.question || j.thought || response.replace(/\{[^}]*\}/g, '').replace(/[{}"]/g, '').trim();
+                    } catch (_) {
+                        response = response.replace(/\{[^}]*\}/g, '').replace(/[{}"]/g, '').trim();
+                    }
+                }
                 SpeechBubble.show(response, Pet.getMood(), 5000);
                 Needs.talk(Pet.needs);
                 Pet.addConversation();
