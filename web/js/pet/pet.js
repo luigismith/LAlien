@@ -7,6 +7,7 @@ import { Evolution } from './evolution.js';
 import { Death, DeathType } from './death.js';
 import { Events } from '../engine/events.js';
 import { Activity } from './activity.js';
+import { AlienLexicon } from '../i18n/alien-lexicon.js';
 
 const STAGE_NAMES = [
     'Syrma', 'Lali-na', 'Lali-shi', 'Lali-ko',
@@ -271,6 +272,8 @@ export const Pet = {
 
     _checkEvolution() {
         if (Evolution.isEvolving()) return;
+        // Sync vocabulary count from the lexicon module (single source of truth)
+        try { this.vocabularySize = AlienLexicon.getDiscoveredCount(); } catch (_) {}
 
         if (Evolution.canEvolve(this.stage, this.getAgeHours(), this.needs,
             this.touchInteractions, this.voiceInteractions,
