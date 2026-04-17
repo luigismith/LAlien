@@ -326,6 +326,28 @@ async function resumeAfterLogin(serverOnline) {
         }
         // Vocabulary bidirectional
         AlienLexicon.discoverFromText(text, 'keeper');
+
+        // Command recognition: if keeper tells pet to do something with items, force it
+        const lower = text.toLowerCase();
+        if (/prendi|mangia|raccogli|vai.*palla|vai.*mela|vai.*gioc|usa|take|eat|grab/i.test(lower)) {
+            const allItems = Items.getAll();
+            if (allItems.length > 0) {
+                // Find best matching item from the command
+                let target = allItems[0];
+                if (/palla|ball/i.test(lower)) target = allItems.find(i => i.action === 'ball') || target;
+                if (/mela|cibo|food|mangia|eat/i.test(lower)) target = allItems.find(i => i.action === 'feed') || target;
+                if (/gioc|toy|play/i.test(lower)) target = allItems.find(i => i.action === 'play') || target;
+                if (/puzzle/i.test(lower)) target = allItems.find(i => i.action === 'puzzle') || target;
+                if (/telesc|scope/i.test(lower)) target = allItems.find(i => i.action === 'explore') || target;
+                if (/peluch|plush|orso/i.test(lower)) target = allItems.find(i => i.action === 'caress') || target;
+                // Force pet to walk there
+                if (Pet.motion && target) {
+                    const worldCx = document.getElementById('game-canvas')?.width / 2 || 400;
+                    Pet.motion.targetOffsetX = target.x - worldCx;
+                    Pet._itemWalking = true;
+                }
+            }
+        }
         // LLM call
         if (LLMClient.isAvailable && LLMClient.isAvailable()) {
             try {

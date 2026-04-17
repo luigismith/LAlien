@@ -51,7 +51,7 @@ function ensureTarget() {
     const candidates = _items.filter(it => {
         const def = ITEM_TYPES[it.action];
         if (!def) return false;
-        return lowestNeed(def) < 65;
+        return lowestNeed(def) < 80;  // pet uses items more eagerly, not only when desperate
     });
     if (!candidates.length) { _targetItemId = null; return null; }
 
