@@ -307,14 +307,73 @@ function executeThought(t) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Retroactive simulation: "what did the pet do while you were away?"
+// Called once when the app resumes after a long absence.
+// ---------------------------------------------------------------------------
+async function simulateAbsence(elapsedMinutes) {
+    if (!isEnabled()) return null;
+    if (!LLMClient.isAvailable || !LLMClient.isAvailable()) return null;
+    if (!Pet || !Pet.isAlive || !Pet.isAlive() || Pet.isEgg()) return null;
+    if (elapsedMinutes < 10) return null;  // not worth simulating < 10 min
+
+    const hours = Math.round(elapsedMinutes / 60 * 10) / 10;
+    const ctx = buildContext();
+    const name = Pet.getName() || 'il Lalìen';
+    const stage = Pet.stage;
+
+    const prompt = `You are ${name}, a Lalìen from Echòa (stage ${stage}). `
+        + `Your keeper was AWAY for ${hours} hours. During that time you were alone.\n\n`
+        + `Based on your personality, current needs, and memories, describe what you DID `
+        + `during those ${hours} hours. Generate a JSON array of 3-5 events:\n`
+        + `[{"time":"2h ago","action":"description in Italian, 1 sentence","mood":"happy|sad|lonely|curious|sleepy|neutral"}]\n\n`
+        + `Examples of things you might have done:\n`
+        + `- Played with a toy left on the floor\n`
+        + `- Wandered around looking out at the stars\n`
+        + `- Napped because you were tired\n`
+        + `- Thought about Echòa and the song you lost\n`
+        + `- Felt lonely and waited by the door\n`
+        + `- Practiced a new alien word\n`
+        + `- Got hungry and ate food left for you (if items were present)\n`
+        + `- Dreamed of crystalline plains\n\n`
+        + `Also add a final "greeting" field: what you say to the keeper NOW that they're back. `
+        + `Mix alien + keeper language based on your stage.\n\n`
+        + `Full response format (JSON only):\n`
+        + `{"events":[...],"greeting":"your welcome-back line","mood":"how you feel right now"}\n\n`
+        + `Context: ${JSON.stringify(ctx)}`;
+
+    try {
+        const raw = await LLMClient.chat(
+            'You simulate a virtual pet\'s offline life. Respond with JSON ONLY. No markdown.',
+            prompt
+        );
+        const m = raw.match(/\{[\s\S]*\}/);
+        if (!m) return null;
+        const result = JSON.parse(m[0]);
+        if (!result.events || !Array.isArray(result.events)) return null;
+
+        // Log events to diary
+        for (const ev of result.events) {
+            try { DiaryGenerator.logMemory('offline', `[${ev.time}] ${ev.action}`); } catch (_) {}
+        }
+
+        return result;
+    } catch (_) { return null; }
+}
+
 export const Mind = {
     init() {
         if (_tickHandle) clearInterval(_tickHandle);
-        // Check every 60s whether to call; actual LLM call throttled by interval
         _tickHandle = setInterval(() => tickOnce(), 60 * 1000);
     },
     tickNow() { return tickOnce(); },
     isEnabled,
     setEnabled,
     intervalForStage: (s) => INTERVAL_FOR_STAGE[s] || 0,
+
+    /**
+     * Called at app startup with the real minutes elapsed since last session.
+     * Returns { events, greeting, mood } or null.
+     */
+    simulateAbsence,
 };

@@ -294,6 +294,31 @@ async function resumeAfterLogin(serverOnline) {
     // LLM-driven inner life — higher cognition scaled with stage
     Mind.init();
 
+    // Retroactive simulation: if the keeper was away, ask the LLM what
+    // the pet did while alone, then show a welcome-back sequence.
+    if (Pet.isAlive() && !Pet.isEgg() && Pet.lastRealTimestamp) {
+        const awayMs = Date.now() - Pet.lastRealTimestamp;
+        const awayMin = awayMs / 60000;
+        if (awayMin >= 10) {
+            Mind.simulateAbsence(awayMin).then(result => {
+                if (!result) return;
+                // Show diary-style recap
+                if (result.events && result.events.length) {
+                    const lines = result.events.map(e => `${e.time}: ${e.action}`).join('\n');
+                    showToast(`📖 Mentre eri via (${Math.round(awayMin)} min):\n${result.events[0].action}`, 6000);
+                    // Log a summary thought
+                    DiaryGenerator.logMemory('absence_summary', `Il custode è stato via ${Math.round(awayMin)} minuti.`);
+                }
+                // Welcome-back greeting
+                if (result.greeting) {
+                    setTimeout(() => {
+                        SpeechBubble.show(result.greeting, result.mood || 'happy', 5000);
+                    }, 2000);
+                }
+            }).catch(() => {});
+        }
+    }
+
     // If pet is egg, show egg screen
     if (Pet.isEgg()) {
         GameState.currentScreen = 'egg';
