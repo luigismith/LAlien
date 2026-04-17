@@ -200,6 +200,8 @@ export const Activity = {
      */
     tick(pet, timeMultiplier = 1) {
         if (!pet.activity) this.init(pet);
+        // Global sleep flag for speech-bubble guard (cross-module, no import needed)
+        window._lalienPetSleeping = pet.activity && pet.activity.type === ActivityType.SLEEPING;
         if (pet.activity.type === ActivityType.IDLE) {
             pet.activity.lastTickAt = now();
             return;

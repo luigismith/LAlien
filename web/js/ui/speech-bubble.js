@@ -89,11 +89,12 @@ if ('speechSynthesis' in window) {
 
 export const SpeechBubble = {
     show(text, mood = 'neutral', duration = 3000) {
-        // Silence while sleeping: no bubble, no TTS, no chirp.
-        // The act of sleeping IS communication; any audio breaks the illusion.
+        // Absolute silence while sleeping — check both raw state AND module
         try {
             if (Pet && Pet.activity && Pet.activity.type === 'SLEEPING') return;
         } catch (_) {}
+        // Also block if game-loop flagged sleeping (set by renderer/activity tick)
+        if (window._lalienPetSleeping) return;
         const bubble = document.getElementById('speech-bubble');
         const textEl = document.getElementById('speech-text');
 
