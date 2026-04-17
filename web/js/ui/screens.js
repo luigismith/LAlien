@@ -991,7 +991,7 @@ export const Screens = {
                     }
                 }
             }
-        } catch (e) { /* non-critical */ }
+        } catch (e) { console.error('[evolution status]', e); }
 
         const sfxEl = document.getElementById('settings-sfx-toggle');
         if (sfxEl) sfxEl.checked = SoundEngine.isEnabled();

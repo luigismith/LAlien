@@ -68,7 +68,8 @@ export const Evolution = {
         if (currentStage >= REQUIREMENTS.length) return [{ label: 'Stadio massimo raggiunto', have: '—', need: '—' }];
         const req = REQUIREMENTS[currentStage];
         const blockers = [];
-        if (ageHours < req.minAgeHours)      blockers.push({ label: 'Età',             have: `${ageHours}h`,          need: `${req.minAgeHours}h` });
+        const fmtH = (h) => h < 1 ? `${Math.round(h * 60)}min` : `${Math.round(h)}h`;
+        if (ageHours < req.minAgeHours)      blockers.push({ label: 'Età',             have: fmtH(ageHours),          need: fmtH(req.minAgeHours) });
         const avg = Needs.getOverallWellness(needs);
         if (req.minAvgNeeds > 0 && avg < req.minAvgNeeds)
             blockers.push({ label: 'Benessere medio',    have: `${Math.round(avg)}%`,   need: `${req.minAvgNeeds}%` });
