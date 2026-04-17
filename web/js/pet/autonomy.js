@@ -252,6 +252,17 @@ function checkTick() {
         }
     }
 
+    // ---- AUTO-NAP: if very tired or very bored, the pet decides to sleep on its own ----
+    if (Pet.needs[NeedType.MOKO] < 25 || (Pet.needs[NeedType.NASHI] < 20 && Pet.needs[NeedType.MOKO] < 60)) {
+        if (Activity.getType(Pet) === 'IDLE' && Math.random() < 0.3) {
+            try {
+                Activity.start(Pet, Activity.Type.SLEEPING, { fromAutoNap: true });
+                Events.emit('autonomy-speak', { line: 'moko... sha-la thi', mood: 'sleepy' });
+            } catch (_) {}
+            return;
+        }
+    }
+
     // ---- Normal speech initiative ----
     if (nowMs - _lastSpeakAt > BASE_GAP_SPEAK_MS * p.speakMul) {
         // Probability: base 25% + boredom + loneliness + curiosity bonus

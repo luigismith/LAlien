@@ -40,8 +40,9 @@ const CFG = {
         tick(pet, dt) {
             pet.needs[NeedType.MOKO]     = clamp(pet.needs[NeedType.MOKO]     + 0.06  * dt, 0, 100);
             pet.needs[NeedType.SECURITY] = clamp(pet.needs[NeedType.SECURITY] + 0.012 * dt, 0, 100);
-            pet.needs[NeedType.NASHI]    = clamp(pet.needs[NeedType.NASHI]    + 0.003 * dt, 0, 100);
+            pet.needs[NeedType.NASHI]    = clamp(pet.needs[NeedType.NASHI]    + 0.015 * dt, 0, 100);  // sleep cures boredom too
             pet.needs[NeedType.HEALTH]   = clamp(pet.needs[NeedType.HEALTH]   + 0.004 * dt, 0, 100);
+            pet.needs[NeedType.CURIOSITY]= clamp(pet.needs[NeedType.CURIOSITY]+ 0.008 * dt, 0, 100);  // wake up refreshed & curious
             // Only auto-wake when MOKO full AND at least 2 real minutes asleep
             // (prevents instant exit if the keeper puts pet to sleep at MOKO=100)
             const elapsed = pet.activity ? (Date.now() - (pet.activity.startedAt || 0)) : 0;
