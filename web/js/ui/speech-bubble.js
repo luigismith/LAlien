@@ -89,6 +89,11 @@ if ('speechSynthesis' in window) {
 
 export const SpeechBubble = {
     show(text, mood = 'neutral', duration = 3000) {
+        // Silence while sleeping: no bubble, no TTS, no chirp.
+        // The act of sleeping IS communication; any audio breaks the illusion.
+        try {
+            if (Pet && Pet.activity && Pet.activity.type === 'SLEEPING') return;
+        } catch (_) {}
         const bubble = document.getElementById('speech-bubble');
         const textEl = document.getElementById('speech-text');
 
@@ -114,10 +119,14 @@ export const SpeechBubble = {
             }
         }, speed);
 
-        // Alien chirp (150ms) before TTS, to give the creature a "voice"
+        // Mood-aware alien chirp before TTS, to give the creature a voice
         try {
             const stage = (Pet && Pet.getStage) ? Pet.getStage() : 2;
-            SoundEngine.playChirp(stage);
+            if (SoundEngine.playMoodChirp) {
+                SoundEngine.playMoodChirp(stage, mood);
+            } else {
+                SoundEngine.playChirp(stage);
+            }
         } catch (_) {}
 
         // Speak aloud

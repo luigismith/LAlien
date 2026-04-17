@@ -145,9 +145,10 @@ export const StatusBar = {
         document.getElementById('status-stage').textContent = Pet.getStageName();
 
         const days = Pet.getAgeDays();
-        const hours = Pet.getAgeHours() % 24;
-        document.getElementById('status-age').textContent =
-            days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+        const hours = Pet.getAgeHoursDisplay() % 24;
+        const minutes = Pet.getAgeMinutes() % 60;
+        const ageStr = days > 0 ? `${days}d ${hours}h` : (hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`);
+        document.getElementById('status-age').textContent = ageStr;
 
         let criticalCount = 0;
         for (let i = 0; i < NeedType.COUNT; i++) {

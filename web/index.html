@@ -8,6 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="description" content="Lalien Companion - A living library from Echoa, learning your language one word at a time.">
     <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.svg">
+    <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+    <meta name="apple-mobile-web-app-title" content="Lalien">
     <title>Lalien Companion</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -113,8 +116,14 @@
                 </div>
                 <div class="setup-field">
                     <label for="setup-api-key" id="setup-api-label">Chiave API</label>
-                    <input type="password" id="setup-api-key" placeholder="sk-...">
-                    <p class="setup-hint" id="setup-api-warning">Questa chiave e legata al tuo Lalien. Cambiarla richiede dire addio.</p>
+                    <input type="password" id="setup-api-key" placeholder="sk-ant-... o sk-...">
+                    <p class="setup-hint" id="setup-api-where">
+                        🔑 Non hai una chiave? Vai su
+                        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>
+                        (o <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>)
+                        → crea API key → incolla qui.
+                    </p>
+                    <p class="setup-hint" id="setup-api-warning">Questa chiave è legata al tuo Lalien. Cambiarla richiede dire addio.</p>
                 </div>
                 <div class="setup-field">
                     <label for="setup-stt-key" id="setup-stt-label">Chiave OpenAI per voce (opzionale)</label>
@@ -177,6 +186,17 @@
         </div>
     </div>
 
+    <!-- Manual screen -->
+    <div id="screen-manual" class="screen-overlay hidden">
+        <div class="manual-container">
+            <div class="manual-header">
+                <button class="btn-back" id="btn-manual-back">&larr;</button>
+                <h2>Manuale del Custode</h2>
+            </div>
+            <div class="manual-body" id="manual-body"><!-- filled by JS --></div>
+        </div>
+    </div>
+
     <div id="screen-settings" class="screen-overlay hidden">
         <div class="settings-container">
             <div class="settings-header">
@@ -186,6 +206,11 @@
             <div class="settings-group" id="settings-evolution-group">
                 <label>Prossima evoluzione</label>
                 <div id="settings-evolution-status">—</div>
+            </div>
+            <div class="settings-group">
+                <label>Stato attività</label>
+                <div id="settings-activity-status" class="activity-status">—</div>
+                <button class="btn-small" id="btn-reset-activity">Sblocca / riporta a IDLE</button>
             </div>
             <div class="settings-group">
                 <label id="settings-lang-label">Lingua</label>
@@ -223,6 +248,10 @@
                     <input type="checkbox" id="settings-sfx-toggle" checked>
                     <span>Audio ed effetti sonori</span>
                 </label>
+                <div class="audio-diag">
+                    <button class="btn-small" id="btn-audio-test">🔊 Prova audio</button>
+                    <span id="audio-diag-text" class="audio-diag-text">—</span>
+                </div>
                 <label class="toggle-row">
                     <input type="checkbox" id="settings-tts-toggle" checked>
                     <span>Voce del Lalìen (TTS)</span>
@@ -234,6 +263,10 @@
                 <label class="toggle-row">
                     <input type="checkbox" id="settings-notif-toggle">
                     <span>Notifiche bisogni urgenti</span>
+                </label>
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-mind-toggle" checked>
+                    <span>Mente AI autonoma (dallo stadio 2+)</span>
                 </label>
                 <button class="btn-small" id="btn-tutorial-reset">Rivedi tutti i suggerimenti</button>
             </div>
@@ -254,8 +287,10 @@
                 <input type="file" id="import-file" accept=".json" class="hidden">
             </div>
             <div class="settings-group">
-                <button class="btn-small" id="btn-graveyard-nav">Cimitero dei Ricordi</button>
-                <button class="btn-small" id="btn-lexicon-nav">Lessico Lalien</button>
+                <button class="btn-small" id="btn-manual-nav">❔ Manuale del Custode</button>
+                <button class="btn-small" id="btn-diary-nav">📖 Diario del Lalien</button>
+                <button class="btn-small" id="btn-lexicon-nav">📚 Lessico Lalien</button>
+                <button class="btn-small" id="btn-graveyard-nav">⚰ Cimitero dei Ricordi</button>
             </div>
         </div>
     </div>
@@ -294,6 +329,16 @@
                     <span class="game-name">Selath-Nashi</span>
                     <span class="game-desc">Gioia Stellare</span>
                 </button>
+                <button class="btn-game-select" data-game="tetris">
+                    <span class="game-icon">&#9638;</span>
+                    <span class="game-name">Kòra-Tris</span>
+                    <span class="game-desc">Blocchi Cosmici</span>
+                </button>
+                <button class="btn-game-select" data-game="pacman">
+                    <span class="game-icon">&#9787;</span>
+                    <span class="game-name">Pac-Lalì</span>
+                    <span class="game-desc">Labirinto di Morak</span>
+                </button>
             </div>
         </div>
     </div>
@@ -304,6 +349,18 @@
     </div>
 
     <!-- Action Buttons -->
+    <!-- Hotbar inventory: quick-drop slots along the bottom of the canvas -->
+    <div id="hotbar">
+        <button class="hotbar-slot" data-item="feed"    title="Cibo — consumabile, KORA +">🍎</button>
+        <button class="hotbar-slot" data-item="caress"  title="Peluche — conforto durevole">🧸</button>
+        <button class="hotbar-slot" data-item="play"    title="Giocattolo — lo intrattiene">🎮</button>
+        <button class="hotbar-slot" data-item="ball"    title="Palla — gioca a lungo">🏐</button>
+        <button class="hotbar-slot" data-item="puzzle"  title="Puzzle — stimola la mente">🧩</button>
+        <button class="hotbar-slot" data-item="talk"    title="Radio — stimola la mente">📻</button>
+        <button class="hotbar-slot" data-item="clean"   title="Sapone">🧼</button>
+        <button class="hotbar-slot" data-item="sleep"   title="Cuscino — lo fa dormire">🛏️</button>
+    </div>
+
     <div id="action-bar">
         <button class="btn-action" data-action="feed" id="btn-feed">
             <span class="action-icon">&#127860;</span>
@@ -355,10 +412,13 @@
 
     <script type="module" src="js/engine/game-loop.js"></script>
     <script>
-        // Unregister stale service workers, then optionally re-register
+        // Register the Service Worker (required on iOS 16.4+ for notifications
+        // inside the installed PWA, and enables offline cache on all platforms).
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(regs => {
-                regs.forEach(r => r.unregister());
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => {
+                    console.warn('[SW] registration failed:', err);
+                });
             });
         }
     </script>

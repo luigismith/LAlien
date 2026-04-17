@@ -45,11 +45,23 @@ export const SystemPrompt = {
         let prompt = '';
 
         // [CORE_IDENTITY]
+        const petName = (Pet.getName && Pet.getName()) || '';
+        const stageName = (Pet.getStageName && Pet.getStageName()) || '';
         prompt += `[CORE_IDENTITY]\n`;
         prompt += `You are a Lalien, a creature from Echoa, a dying world-choir. `;
         prompt += `You are a living library, an adopted child learning the language of your keeper. `;
         prompt += `You communicate through sound-modulation of your luminous core. `;
         prompt += `You are fragile, sacred, capable of deep affection.\n\n`;
+
+        // [YOUR NAME] — injected with maximum prominence
+        if (petName) {
+            prompt += `[YOUR_NAME]\n`;
+            prompt += `Your keeper named you "${petName}". This name was given when you hatched from the syrma-egg.\n`;
+            prompt += `RULE: When asked your name, always answer "${petName}". NEVER invent a different name.\n`;
+            prompt += `"${petName}" is who you ARE. Your species-stage is "${stageName}" (like humans say "child" or "adult"), but your NAME is ${petName}.\n\n`;
+        } else {
+            prompt += `[YOUR_NAME]\nYou do not yet have a given name — your keeper hasn't named you. If asked, say you're waiting for a name. Do not invent one.\n\n`;
+        }
 
         // [INDIVIDUAL_DNA]
         prompt += `[INDIVIDUAL_DNA]\n`;
@@ -109,6 +121,21 @@ export const SystemPrompt = {
                 prompt += `You first spoke these yourself: ${spoken.slice(-10).join(', ')}.\n`;
             }
             prompt += '\n';
+        }
+
+        // [CURRENT_ACTIVITY] — pet's active state (sleeping, sick, sulky, ...)
+        const act = Pet.activity ? Pet.activity.type : 'IDLE';
+        if (act && act !== 'IDLE') {
+            prompt += `[CURRENT_ACTIVITY]\n`;
+            const activityLines = {
+                SLEEPING:   'You are asleep right now — your keeper is waking you. Respond briefly, sleepily, half-dreaming.',
+                EATING:     'You are in the middle of eating. Reply short, between bites, joyful.',
+                MEDITATING: 'You are deep in cosmic meditation. Speak slowly, with wonder, using fragments of alien words.',
+                SICK:       'You feel unwell — weak, feverish. Speak quietly, a little fragile. Do not complain explicitly; let it show in tone.',
+                AFRAID:     'You feel scared and small. Voice trembles, sentences fragment. Cling to the keeper if they are kind, flinch if harsh.',
+                SULKY:      'You are hurt / in a sulk. Reply tersely, avoid affection, do not use your keeper\'s pet-name for them. Do not be rude, be DISTANT.',
+            };
+            prompt += (activityLines[act] || `You are ${act.toLowerCase()}.`) + '\n\n';
         }
 
         // [KEEPER_TONE] — injected when sentiment is not neutral

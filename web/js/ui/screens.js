@@ -28,6 +28,7 @@ const SCREEN_IDS = {
     'settings': 'screen-settings',
     'minigame': 'screen-minigame',
     'minigame-select': 'screen-minigame-select',
+    'manual': 'screen-manual',
 };
 
 function hideAll() {
@@ -62,6 +63,10 @@ export const Screens = {
                     Pet.applyGameResult(result);
                     Events.emit('pet-changed');
                 }
+            }
+            if (this._minigameKeyHandler) {
+                window.removeEventListener('keydown', this._minigameKeyHandler);
+                this._minigameKeyHandler = null;
             }
             this.show('main');
         });
@@ -107,6 +112,7 @@ export const Screens = {
         if (screen === 'diary') this._renderDiary();
         if (screen === 'lexicon') this._renderLexicon();
         if (screen === 'graveyard') this._renderGraveyard();
+        if (screen === 'manual') this._renderManual();
         if (screen === 'settings') this._renderSettings();
     },
 
@@ -176,6 +182,13 @@ export const Screens = {
                 // Harsh words also scare the pet a little (reduce SECURITY)
                 if (sent.bucket === 'negative') {
                     Pet.needs[NeedType.SECURITY] = Math.max(0, Pet.needs[NeedType.SECURITY] + mag * 3);
+                    // Strong hostility → transition to SULKY (if not already in a blocking activity)
+                    if (sent.score < -0.55 && sent.confidence > 0.5) {
+                        const { Activity } = await import('../pet/activity.js');
+                        if (Activity.getType(Pet) === Activity.Type.IDLE) {
+                            Activity.start(Pet, Activity.Type.SULKY, { reason: 'harsh-words' });
+                        }
+                    }
                 }
             }
 
@@ -194,9 +207,10 @@ export const Screens = {
                 return;
             }
 
-            // Thinking indicator
+            // Thinking indicator + pixel thinking-mark over pet
             this._addMessage(Pet.getName() + ' ' + I18n.get('chat_thinking'), 'system');
             SoundEngine.playThinking();
+            try { (await import('./emotive-effects.js')).EmotiveEffects.setThinking(5000); } catch (_) {}
 
             try {
                 const prompt = SystemPrompt.build(sent);
@@ -270,11 +284,109 @@ export const Screens = {
 
     _addMessage(text, type) {
         const log = document.getElementById('conversation-log');
-        const div = document.createElement('div');
-        div.className = `msg msg-${type}`;
-        div.textContent = text;
-        log.appendChild(div);
+        const wrap = document.createElement('div');
+        wrap.className = `msg msg-${type}`;
+
+        if (type === 'pet') {
+            // Prefix with pet name label
+            const label = document.createElement('div');
+            label.className = 'msg-label';
+            label.textContent = (Pet.getName && Pet.getName()) || 'Lalìen';
+            wrap.appendChild(label);
+        } else if (type === 'user') {
+            const label = document.createElement('div');
+            label.className = 'msg-label';
+            label.textContent = 'tu';
+            wrap.appendChild(label);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'msg-body';
+        // For pet messages, wrap each word in a span so we can karaoke-highlight it
+        if (type === 'pet') {
+            const tokens = text.split(/(\s+)/);
+            for (const tk of tokens) {
+                if (/^\s+$/.test(tk)) {
+                    body.appendChild(document.createTextNode(tk));
+                } else if (tk.length) {
+                    const s = document.createElement('span');
+                    s.className = 'karaoke-word';
+                    s.textContent = tk;
+                    body.appendChild(s);
+                }
+            }
+        } else {
+            body.textContent = text;
+        }
+        wrap.appendChild(body);
+
+        log.appendChild(wrap);
         log.scrollTop = log.scrollHeight;
+
+        // Kick off karaoke + TTS for pet messages
+        if (type === 'pet') {
+            this._karaokeSpeak(body, text);
+        }
+        return wrap;
+    },
+
+    /**
+     * Speak the pet's reply with Web Speech API and highlight each word in sync.
+     * Uses the boundary event when available, otherwise estimates timing.
+     */
+    _karaokeSpeak(container, text) {
+        const spans = container.querySelectorAll('.karaoke-word');
+        if (!spans.length) return;
+        const mood = (Pet.getMood && Pet.getMood()) || 'neutral';
+        // Play the mood-aware chirp as intro
+        try { SoundEngine.playMoodChirp && SoundEngine.playMoodChirp(Pet.getStage(), mood); } catch (_) {}
+
+        if (!('speechSynthesis' in window) || localStorage.getItem('lalien_tts_enabled') === '0') {
+            // No TTS — fall back to timed reveal (~100ms/word)
+            let i = 0;
+            const iv = setInterval(() => {
+                if (i >= spans.length) { clearInterval(iv); return; }
+                spans[i].classList.add('spoken');
+                if (i > 0) spans[i-1].classList.add('past');
+                i++;
+            }, 180);
+            return;
+        }
+
+        try {
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            const stage = (Pet.getStage && Pet.getStage()) || 2;
+            const voices = speechSynthesis.getVoices();
+            const lang = (localStorage.getItem('lalien_language') || 'it').toLowerCase();
+            const voice = voices.find(v => v.lang.toLowerCase().startsWith(lang)) || voices[0];
+            if (voice) { u.voice = voice; u.lang = voice.lang; }
+            // Stage-appropriate voice
+            const baseTable = [
+                { p:1.95, r:1.15 },{ p:1.90, r:1.30 },{ p:1.75, r:1.25 },
+                { p:1.50, r:1.15 },{ p:1.25, r:1.05 },{ p:1.00, r:1.00 },
+                { p:0.80, r:0.85 },{ p:1.10, r:0.75 },
+            ];
+            const base = baseTable[stage] || baseTable[2];
+            const moodOff = mood === 'happy' ? 0.15 : mood === 'sad' ? -0.2 : mood === 'scared' ? 0.25 : 0;
+            u.pitch = Math.max(0.1, Math.min(2, base.p + moodOff));
+            u.rate  = Math.max(0.5, Math.min(2, base.r));
+
+            // Word-boundary highlighting
+            let idx = 0;
+            u.onboundary = (ev) => {
+                if (ev.name && ev.name !== 'word') return;
+                if (idx < spans.length) {
+                    if (idx > 0) spans[idx - 1].classList.add('past');
+                    spans[idx].classList.add('spoken');
+                    idx++;
+                }
+            };
+            u.onend = () => {
+                for (const s of spans) { s.classList.add('past'); s.classList.remove('spoken'); }
+            };
+            speechSynthesis.speak(u);
+        } catch (_) { /* ignore */ }
     },
 
     // ---- Diary ----
@@ -303,6 +415,221 @@ export const Screens = {
 
     // ---- Lexicon ----
     _bindLexicon() {},
+
+    _renderManual() {
+        const body = document.getElementById('manual-body');
+        if (!body) return;
+        const stageCards = [0,1,2,3,4,5,6,7].map(s => {
+            const names = ['Syrma','Lali-na','Lali-shi','Lali-ko','Lali-ren','Lali-vox','Lali-mere','Lali-thishi'];
+            const descs = [
+                'Uovo cosmico. Vibra ma non parla. Schiusa dopo 10 min + 3 tocchi.',
+                'Cucciolo appena nato. Solo suoni alieni puri.',
+                'Cucciolo. Inizia a imitare le tue parole.',
+                'Bambino. 1-3 parole in lingua tua con lalì misto.',
+                'Adolescente. Fluente con accento alieno.',
+                'Adulto. Padronanza del linguaggio + personalità.',
+                'Anziano. Saggezza rara e silenzi significativi.',
+                'Trascendente. Quasi parte del cielo, ogni parola un addio.',
+            ];
+            return `
+                <div class="manual-stage">
+                    <img src="sprites/stage_${s}_${['syrma','lalina','lalishi','laliko','laliren','lalivox','lalimere','lalithishi'][s]}/variant_00/preview.png" alt="${names[s]}">
+                    <div>
+                        <h4>${s}. ${names[s]}</h4>
+                        <p>${descs[s]}</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const needsGrid = [
+            ['🍎','Fame (Kòra)','Scende col tempo. Dagli cibo. Se >85% rifiuta.'],
+            ['💤','Sonno (Mokó)','Scende di giorno, più in fretta di notte. Fai dormire.'],
+            ['💧','Igiene (Miska)','Si sporca giocando. Puliscilo.'],
+            ['😊','Felicità (Nashi)','Coccole, giochi, parole dolci.'],
+            ['❤','Salute','Derivata: guarisce da sola se tutti gli altri sono alti.'],
+            ['🧠','Mente','Chat e stimoli mentali.'],
+            ['🫂','Affetto','Carezze e vicinanza. Crolla se lontano a lungo.'],
+            ['👁','Curiosità','Giochi diversi, novità.'],
+            ['✨','Cosmico','Solo stadio 6+. Meditazione.'],
+            ['🛡','Sicurezza','Presenza costante e routine.'],
+        ].map(([icon, name, desc]) => `
+            <div class="manual-need">
+                <span class="manual-need-icon">${icon}</span>
+                <div><strong>${name}</strong><br><span>${desc}</span></div>
+            </div>
+        `).join('');
+
+        body.innerHTML = `
+            <section>
+                <h3>👋 Benvenuto, Custode</h3>
+                <p>Il Lalìen è una creatura di Echòa, un mondo-coro morente. Custodirlo significa nutrirlo, coccolarlo, insegnargli la tua lingua, lasciarlo esplorare il suo ambiente e accompagnarlo attraverso <b>8 stadi evolutivi</b> fino alla trascendenza.</p>
+                <p>Ogni Lalìen è <b>unico</b>: il suo DNA determina aspetto (1 tra 16 varianti per stadio), personalità, cibi preferiti, momento della giornata che ama. La sua vita è <b>permadeath</b>: se muore non torna più.</p>
+            </section>
+
+            <section>
+                <h3>🎮 I controlli</h3>
+                <p><b>Barra alta (chips):</b> ogni chip è un bisogno <i>e</i> un'azione.</p>
+                <ul>
+                    <li><b>Tap breve</b> su un chip → apre una scheda con stato % + consiglio + pulsante CTA</li>
+                    <li><b>Long-press</b> (0.6s) → esegue subito l'azione mappata</li>
+                    <li><b>Drag del chip SUL pet</b> → esegue l'azione via gesto</li>
+                    <li><b>Drag del chip SUL pavimento</b> → <b>lascia un oggetto</b> nella scena</li>
+                </ul>
+                <p><b>Sul pet direttamente:</b></p>
+                <ul>
+                    <li><b>Tap</b> → poke (sorpresa)</li>
+                    <li><b>Striscia ripetuta</b> multi-direzionale → carezza (cuori che salgono)</li>
+                    <li><b>Scrub circolare</b> attorno → pulizia (bollicine)</li>
+                    <li><b>Long-press 0.6s</b> → apre overlay bisogni dettagliato</li>
+                </ul>
+                <p><b>Gesti del dispositivo:</b></p>
+                <ul>
+                    <li><b>Scuoti il telefono</b> → apre selettore mini-giochi</li>
+                </ul>
+            </section>
+
+            <section>
+                <h3>🎒 Hotbar e oggetti</h3>
+                <p>La barra in basso contiene <b>8 slot rapidi</b>: trascina sul pavimento per lasciare un oggetto che il pet userà da solo.</p>
+                <p><b>Oggetti consumabili</b> (uso singolo, poi spariscono):</p>
+                <ul>
+                    <li>🍎 <b>Cibo</b> — KORA +35, NASHI +3</li>
+                    <li>🧼 <b>Sapone</b> — MISKA +30 (3 usi)</li>
+                    <li>🛏️ <b>Cuscino</b> — avvia il sonno quando il pet lo raggiunge</li>
+                    <li>✨ <b>Cristallo</b> — avvia meditazione (stadio 6+)</li>
+                </ul>
+                <p><b>Oggetti persistenti</b> (il pet ci resta vicino e guadagna bonus continuo):</p>
+                <ul>
+                    <li>🎮 <b>Giocattolo</b> — NASHI +0.35/tick (8 usi, 1 uso ogni 60s ≈ 8 min)</li>
+                    <li>🧸 <b>Peluche</b> — AFFECTION +0.25/tick (12 usi ≈ 12 min)</li>
+                    <li>📻 <b>Radio</b> — COGNITION +0.30/tick (10 usi ≈ 10 min)</li>
+                    <li>🏐 <b>Palla</b> — CURIOSITY +0.30/tick (8 usi ≈ 8 min)</li>
+                    <li>🧩 <b>Puzzle</b> — COGNITION +0.25/tick (10 usi ≈ 10 min)</li>
+                </ul>
+                <p class="manual-note">Usa gli oggetti persistenti per tenerlo occupato quando non sei lì. Il pet sceglie autonomamente l'oggetto che corrisponde al bisogno più basso e ci cammina verso orizzontalmente. Gli oggetti scadono dopo il loro lifespan (10-60 min).</p>
+            </section>
+
+            <section>
+                <h3>📊 I 10 Bisogni</h3>
+                <div class="manual-needs-grid">${needsGrid}</div>
+                <p class="manual-note">I chip cambiano bordo in base al livello: <span style="color:#40C470">verde</span> ≥70, giallo 40-70, arancione 20-40, <span style="color:#E04848">rosso pulsante</span> &lt;20. Se più bisogni sono critici il pet entra in stati speciali (vedi sotto).</p>
+            </section>
+
+            <section>
+                <h3>🧬 8 Stadi di Crescita</h3>
+                <div class="manual-stages">${stageCards}</div>
+                <p class="manual-note">Ogni stadio richiede tempo di gioco + interazioni + parole aliene imparate. Vedi <b>Impostazioni → Prossima evoluzione</b> per sapere cosa manca. Ogni Lalìen ha <b>16 varianti visive</b> scelte dal DNA.</p>
+            </section>
+
+            <section>
+                <h3>🎭 Gli Stati Attivi</h3>
+                <ul>
+                    <li><b>IDLE</b> — tranquillo, attivo, cammina, parla, ti ascolta</li>
+                    <li><b>SLEEPING</b> 💤 — dorme. <b>Tutti i bisogni sono CONGELATI</b>. Puoi aprire impostazioni/diario/manuale senza svegliarlo. Lo svegliano solo: tap diretto, azione che lo tocca (feed/clean/play/talk/caress). Se lo svegli con MOKO &lt;60 diventa SULKY (muso lungo).</li>
+                    <li><b>EATING</b> 🍎 — mastica, KORA sale rapidamente. Non può essere rinutrito.</li>
+                    <li><b>MEDITATING</b> ✨ — solo stadio 6+. 5 min di aura dorata, COSMIC sale, altri bisogni rallentati.</li>
+                    <li><b>SICK</b> 🤒 — HEALTH &lt; 25 per 30s. Azioni al 50%. Esce quando HEALTH > 50.</li>
+                    <li><b>AFRAID</b> 😨 — SECURITY &lt; 15 o parole ostili. Rifiuta gioco. Carezza/parole dolci valgono 1.5×.</li>
+                    <li><b>SULKY</b> 😤 — insulti forti o sveglia brusca. 2-5 min. Rifiuta carezze, talk al 30%.</li>
+                </ul>
+            </section>
+
+            <section>
+                <h3>🧠 La mente del Lalìen</h3>
+                <p>Dallo <b>stadio 2 in poi</b>, il tuo Lalìen ha una <b>mente guidata dall'AI</b>: periodicamente decide da solo cosa fare osservando il suo stato (bisogni, ora del giorno, oggetti presenti, memorie recenti). Non è solo un automa: ragiona, preferisce, si annoia, ti richiede cose specifiche.</p>
+                <p><b>Intelligenza progressiva per stadio:</b></p>
+                <ul>
+                    <li>Stadio 2: pensa ogni 15 min, 3 parole aliene max</li>
+                    <li>Stadio 3: ogni 12 min, 5 parole, desideri semplici</li>
+                    <li>Stadio 4: ogni 10 min, preferenze + richieste</li>
+                    <li>Stadio 5: ogni 8 min, riflessioni sfumate</li>
+                    <li>Stadio 6: ogni 6 min, osservazioni sagge</li>
+                    <li>Stadio 7: ogni 4 min, poesia frammentaria</li>
+                </ul>
+                <p class="manual-note">Richiede una chiave API Claude o GPT. Disattivabile da <b>Impostazioni → Mente AI autonoma</b>. Quando è disattiva il pet torna a reazioni istintive base (comunque varie).</p>
+            </section>
+
+            <section>
+                <h3>💬 Chat e voce</h3>
+                <p>Quando parli col pet in chat:</p>
+                <ul>
+                    <li>Senti la sua <b>voce TTS</b> con pitch/ritmo scalati per lo stadio (cucciolo=acuto, anziano=profondo)</li>
+                    <li>Le parole si illuminano in stile <b>karaoke</b> mentre lui parla</li>
+                    <li>Il pet <b>ricorda sempre il nome</b> che gli hai dato</li>
+                    <li>Usando parole aliene nel tuo messaggio, <b>tu gliele insegni</b>: il suo lessico cresce bidirezionalmente</li>
+                    <li>Il <b>tono</b> che usi (dolce/ostile) influenza NASHI, AFFECTION, SECURITY</li>
+                    <li>Parlare stimola COGNITION +25, AFFECTION +5, CURIOSITY +5</li>
+                </ul>
+            </section>
+
+            <section>
+                <h3>🕹️ I 5 Mini-giochi</h3>
+                <ul>
+                    <li><b>Thishi-Revosh</b> ♪ — memoria dell'eco. Ripeti la sequenza di nodi colorati. +COGNITION +CURIOSITY</li>
+                    <li><b>Miska-Vythi</b> ✨ — pulizia di luce. Spazzola la polvere delicatamente. +MISKA +AFFECTION</li>
+                    <li><b>Selath-Nashi</b> ★ — costellazioni. Connetti le stelle giuste. +COSMIC +CURIOSITY</li>
+                    <li><b>Kòra-Tris</b> ▦ — Tetris alieno con 7 tetromini colorati. Completa righe per +COGNITION +CURIOSITY +SECURITY.<br><i>Tastiera: ←→ sposta, ↑/W ruota, ↓ giù, Spazio caduta istantanea. Touch: tap in alto = ruota, lati = sposta, centro = hard drop.</i></li>
+                    <li><b>Pac-Lalì</b> ☻ — labirinto con 3 morak (spiriti). Raccogli semi (+10), power-pellet (+50) rendono invincibile per 8s (mangi morak +200). +NASHI +CURIOSITY. Vittoria = +SECURITY.<br><i>Tastiera: frecce/WASD. Touch: swipe per girare.</i></li>
+                </ul>
+                <p class="manual-note">Ogni partita costa MOKO (3-6). Dopo <b>3 partite in 10 min</b> il pet è stanco e rifiuta la 4ª.</p>
+            </section>
+
+            <section>
+                <h3>✨ Effetti visivi ed empatici</h3>
+                <p>Il pet esprime emozioni con particelle pixel-art sopra di sé:</p>
+                <ul>
+                    <li>💗 <b>Cuori</b>: quando lo coccoli, quando soddisfi un suo desiderio</li>
+                    <li>😢 <b>Lacrime</b>: durante SULKY</li>
+                    <li>🎵 <b>Note musicali</b>: durante MEDITATING</li>
+                    <li>✨ <b>Scintille dorate</b>: alta felicità, evoluzione, vittoria mini-gioco</li>
+                    <li>❗ <b>Esclamazione</b>: sorpreso da un poke</li>
+                    <li>❓ <b>Punto domanda</b>: mentre l'AI sta pensando</li>
+                    <li>💦 <b>Sudore</b>: malato o impaurito</li>
+                </ul>
+                <p>Ed effetti globali: <b>screen shake</b> quando si spaventa, <b>flash dorato</b> all'evoluzione, <b>flash scuro</b> alla morte, <b>aura</b> durante meditazione.</p>
+            </section>
+
+            <section>
+                <h3>🌅 Ritmo circadiano</h3>
+                <p>Il pet usa l'ora reale del dispositivo per adattare il comportamento:</p>
+                <ul>
+                    <li><b>22:00-07:00</b>: se lo metti a dormire → durata fino alle 7 del mattino</li>
+                    <li><b>07:00-10:00</b>: boost mattutino NASHI +5, CURIOSITY +4 (1 volta al giorno)</li>
+                    <li><b>13:00-15:00</b>: se stanco si addormenta da solo (siesta spontanea)</li>
+                    <li><b>20:00-22:00</b>: ti invita alla nanna con frasi/bolla desiderio</li>
+                    <li><b>Notte con pet sveglio</b>: MOKO cala più in fretta + NASHI erode lentamente</li>
+                </ul>
+            </section>
+
+            <section>
+                <h3>🔔 Notifiche</h3>
+                <p>Attivabili da <b>Impostazioni → Notifiche bisogni urgenti</b>. Su iPhone <b>devi aggiungere l'app alla Home</b> (Condividi → Aggiungi a schermata Home). Quando il pet ha un bisogno critico &lt;20% e non sei nell'app, arriva una notifica di sistema. Cooldown 15 min per bisogno.</p>
+            </section>
+
+            <section>
+                <h3>☁ Cloud sync</h3>
+                <p>Il tuo save (pet, chiavi API cifrate, diario, memorie, lessico) è salvato sul server via <b>PIN personale</b>. Puoi rientrare da qualsiasi dispositivo con lo stesso PIN.</p>
+            </section>
+
+            <section>
+                <h3>⚰ Morte e rinascita</h3>
+                <p>Se trascuri il pet troppo a lungo, muore. Lo ricorderai nel <b>Cimitero dei Ricordi</b>: resterà il suo nome, ultima parola, parole imparate. Da lì puoi piantare un nuovo seme (stesso account) e un nuovo Lalìen nasce con nuovo DNA.</p>
+                <p>Al momento della morte c'è uno <b>sequence visivo</b> dedicato (dissolversi, trascendere, o spegnersi) in base alla causa.</p>
+            </section>
+
+            <section>
+                <h3>🛠 Trucchi e debug</h3>
+                <ul>
+                    <li><b>Moltiplicatore tempo</b> (Impostazioni): 1×/60×/360×/3600× per accelerare tutto</li>
+                    <li><b>Prova audio</b> pulsante in Impostazioni per testare il suono</li>
+                    <li><b>Sblocca attività</b> in Impostazioni: se il pet resta bloccato in uno stato per bug, lo riporti a IDLE</li>
+                    <li><b>Stato attività</b> in Impostazioni mostra cosa sta facendo e tempo rimanente</li>
+                    <li><b>Esporta / Importa</b> salvataggio in JSON per backup manuale</li>
+                </ul>
+            </section>
+        `;
+    },
 
     _renderLexicon() {
         const filters = document.getElementById('lexicon-filters');
@@ -452,11 +779,37 @@ export const Screens = {
             showToast(e.target.checked ? 'Audio attivato' : 'Audio disattivato');
         });
 
+        // "Prova audio" — force resume + play a chirp + show diagnostic
+        document.getElementById('btn-audio-test')?.addEventListener('click', () => {
+            try { SoundEngine.resume && SoundEngine.resume(); } catch (_) {}
+            SoundEngine.setEnabled(true);
+            const sfxToggle = document.getElementById('settings-sfx-toggle');
+            if (sfxToggle) sfxToggle.checked = true;
+            try { SoundEngine.playMoodChirp(2, 'happy'); } catch (_) {}
+            try { SoundEngine.playToast(); } catch (_) {}
+            const diag = document.getElementById('audio-diag-text');
+            if (diag) {
+                const en = SoundEngine.isEnabled();
+                const vol = Math.round((SoundEngine.getVolume?.() ?? 1) * 100);
+                diag.textContent = en ? `Attivo · vol ${vol}%` : 'DISATTIVATO';
+                diag.style.color = en ? 'var(--cyan)' : 'var(--danger)';
+            }
+            showToast('Test audio inviato. Hai sentito qualcosa?');
+        });
+
         // TTS toggle
         document.getElementById('settings-tts-toggle')?.addEventListener('change', (e) => {
             SoundEngine.playToggle(e.target.checked);
             import('./speech-bubble.js').then(m => m.SpeechBubble.setTTSEnabled(e.target.checked));
             showToast(e.target.checked ? 'Voce attivata' : 'Voce disattivata');
+        });
+
+        // Mind (LLM autonomy) toggle
+        document.getElementById('settings-mind-toggle')?.addEventListener('change', async (e) => {
+            SoundEngine.playToggle(e.target.checked);
+            const { Mind } = await import('../pet/mind.js');
+            Mind.setEnabled(e.target.checked);
+            showToast(e.target.checked ? 'Mente AI attiva' : 'Mente AI disattivata — torna alle reazioni base');
         });
 
         // Notifications toggle — requires user permission
@@ -472,9 +825,24 @@ export const Screens = {
                 } else {
                     e.target.checked = false;
                     if (res.reason === 'denied') {
-                        showToast('Permesso negato. Attiva le notifiche dalle impostazioni del browser.');
+                        showToast('Permesso negato. Attiva le notifiche dalle impostazioni del browser per questo sito.');
+                    } else if (res.reason === 'ios-needs-install') {
+                        // Proper iOS Safari PWA install flow
+                        (await import('./notifications.js')).Notifications;
+                        showToast('Su iPhone devi prima aggiungere il sito alla schermata Home. Leggi le istruzioni qui sotto.', 6500);
+                        const { Screens: S } = await import('./screens.js');
+                        // Show a modal/instructions — reuse the existing confirm helper as a simple prompt
+                        await showConfirm(
+                            'Per abilitare le notifiche su iPhone:\n\n' +
+                            '1. Apri Safari (non altro browser).\n' +
+                            '2. Tocca il pulsante "Condividi" (icona quadrato con freccia).\n' +
+                            '3. Seleziona "Aggiungi alla schermata Home".\n' +
+                            '4. Apri l\'icona "Lalìen" dalla Home.\n' +
+                            '5. Torna in Impostazioni e riattiva le notifiche.\n\n' +
+                            'Serve iOS 16.4 o superiore.'
+                        );
                     } else if (res.reason === 'unsupported') {
-                        showToast('Notifiche non supportate su questo browser.');
+                        showToast('Notifiche non supportate su questo browser. Prova con Chrome, Firefox o Safari.');
                     } else {
                         showToast('Permesso non concesso.');
                     }
@@ -516,6 +884,9 @@ export const Screens = {
 
         document.getElementById('btn-graveyard-nav')?.addEventListener('click', () => this.show('graveyard'));
         document.getElementById('btn-lexicon-nav')?.addEventListener('click', () => this.show('lexicon'));
+        document.getElementById('btn-diary-nav')?.addEventListener('click', () => this.show('diary'));
+        document.getElementById('btn-manual-nav')?.addEventListener('click', () => { this._renderManual(); this.show('manual'); });
+        document.getElementById('btn-manual-back')?.addEventListener('click', () => this.show('settings'));
     },
 
     async _renderSettings() {
@@ -549,6 +920,28 @@ export const Screens = {
 
         document.getElementById('settings-time-mult').value = String(GameState.timeMultiplier);
 
+        // Activity status + reset
+        try {
+            const { Activity } = await import('../pet/activity.js');
+            const box = document.getElementById('settings-activity-status');
+            if (box) {
+                const t = Activity.getType(Pet);
+                const rem = Math.round(Activity.remainingMs(Pet) / 1000);
+                box.textContent = rem > 0 ? `${t} (${rem}s rimasti)` : t;
+            }
+            const resetBtn = document.getElementById('btn-reset-activity');
+            if (resetBtn && !resetBtn._wired) {
+                resetBtn._wired = true;
+                resetBtn.addEventListener('click', () => {
+                    try { Activity._exit(Pet, 'manual-reset'); } catch (_) {}
+                    Pet.activity = { type: 'IDLE', startedAt: Date.now(), endsAt: null, lastTickAt: Date.now(), data: {} };
+                    showToast('Stato attività ripristinato a IDLE.');
+                    Events.emit('pet-changed');
+                    this._renderSettings();
+                });
+            }
+        } catch (_) {}
+
         // Evolution status — show next-stage blockers if any
         try {
             const { Evolution } = await import('../pet/evolution.js');
@@ -581,6 +974,11 @@ export const Screens = {
         if (ttsEl) ttsEl.checked = localStorage.getItem('lalien_tts_enabled') !== '0';
         const tutEl = document.getElementById('settings-tutorial-toggle');
         if (tutEl) tutEl.checked = localStorage.getItem('lalien_tutorial_enabled') !== '0';
+        const mindEl = document.getElementById('settings-mind-toggle');
+        if (mindEl) {
+            const { Mind } = await import('../pet/mind.js');
+            mindEl.checked = Mind.isEnabled();
+        }
         const notifEl = document.getElementById('settings-notif-toggle');
         if (notifEl) {
             const { Notifications } = await import('./notifications.js');
@@ -602,6 +1000,8 @@ export const Screens = {
                     case 'echo': type = MiniGames.GameType.ECHO_MEMORY; break;
                     case 'clean': type = MiniGames.GameType.LIGHT_CLEANSING; break;
                     case 'star': type = MiniGames.GameType.STAR_JOY; break;
+                    case 'tetris': type = MiniGames.GameType.TETRIS_KORA; break;
+                    case 'pacman': type = MiniGames.GameType.PACMAN_LALI; break;
                 }
                 this._startMinigame(type);
             });
@@ -609,6 +1009,21 @@ export const Screens = {
     },
 
     _startMinigame(type) {
+        // Play fatigue: track last N starts in a window; reject the 4th
+        const WINDOW_MS = 10 * 60 * 1000;   // 10 min
+        const now = Date.now();
+        this._playLog = (this._playLog || []).filter(t => now - t < WINDOW_MS);
+        if (this._playLog.length >= 3) {
+            showToast('È troppo stanco per giocare ancora. Mettilo a riposare un po\'.');
+            SpeechBubble.show('thi... moko... sha ven', 'sad', 2500);
+            return;
+        }
+        this._playLog.push(now);
+        // Progressive MOKO cost: 1st -3, 2nd -5, 3rd -8
+        const costs = [3, 5, 8];
+        const idx = Math.min(this._playLog.length - 1, costs.length - 1);
+        Pet.needs[NeedType.MOKO] = Math.max(0, Pet.needs[NeedType.MOKO] - costs[idx]);
+
         MiniGames.startGame(type);
         this.show('minigame');
 
@@ -643,7 +1058,7 @@ export const Screens = {
             isDragging = false;
             const pos = getPos(e);
             lastTouchPos = pos;
-            MiniGames.handleTouch(pos.x, pos.y, false);
+            MiniGames.handleTouch(pos.x, pos.y, false, 800, 400);
         };
 
         const onMove = (e) => {
@@ -651,7 +1066,7 @@ export const Screens = {
             if (!lastTouchPos) return;
             isDragging = true;
             const pos = getPos(e);
-            MiniGames.handleTouch(pos.x, pos.y, true);
+            MiniGames.handleTouch(pos.x, pos.y, true, 800, 400);
         };
 
         const onUp = (e) => {
@@ -666,6 +1081,15 @@ export const Screens = {
         canvas.addEventListener('touchstart', onDown, { passive: false });
         canvas.addEventListener('touchmove', onMove, { passive: false });
         canvas.addEventListener('touchend', onUp, { passive: false });
+
+        // Keyboard input for Tetris / Pac-Man
+        const onKey = (e) => {
+            if (!MiniGames.isPlaying()) return;
+            const consumed = MiniGames.handleKey(e);
+            if (consumed) { e.preventDefault(); e.stopPropagation(); }
+        };
+        window.addEventListener('keydown', onKey);
+        this._minigameKeyHandler = onKey;
 
         // Game loop
         const gameLoop = () => {
@@ -692,6 +1116,10 @@ export const Screens = {
                     canvas.removeEventListener('touchstart', onDown);
                     canvas.removeEventListener('touchmove', onMove);
                     canvas.removeEventListener('touchend', onUp);
+                    if (this._minigameKeyHandler) {
+                        window.removeEventListener('keydown', this._minigameKeyHandler);
+                        this._minigameKeyHandler = null;
+                    }
                     this.show('main');
                 }, 2000);
                 return;

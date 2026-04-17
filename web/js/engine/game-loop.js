@@ -5,7 +5,7 @@
 import { Events } from './events.js';
 import { Persistence } from './persistence.js';
 import { Pet } from '../pet/pet.js';
-import { Needs } from '../pet/needs.js';
+import { Needs, NeedType } from '../pet/needs.js';
 import { Evolution } from '../pet/evolution.js';
 import { Death } from '../pet/death.js';
 import { MiniGames } from '../pet/minigames.js';
@@ -26,6 +26,9 @@ import { Gestures } from '../ui/gestures.js';
 import { Notifications } from '../ui/notifications.js';
 import { Activity } from '../pet/activity.js';
 import { Autonomy } from '../pet/autonomy.js';
+import { Rhythms } from '../pet/rhythms.js';
+import { Items } from './items.js';
+import { Mind } from '../pet/mind.js';
 
 // Re-export Events for backward compatibility
 export { Events };
@@ -85,6 +88,7 @@ function logicTick() {
 
     const wasBuried = Pet.buried;
     Pet.update(GameState.timeMultiplier);
+    Items.tick(Pet, 1);
     StatusBar.update();
     updateActionUrgency();
 
@@ -129,10 +133,12 @@ function handleResize() {
     const canvas = document.getElementById('game-canvas');
     const statusBar = document.getElementById('status-bar');
     const statusH = statusBar ? statusBar.offsetHeight : 48;
-    // Action bar is now hidden; chips in the status bar carry the interactions
     const actionBar = document.getElementById('action-bar');
     const actionH = (actionBar && actionBar.offsetParent !== null) ? actionBar.offsetHeight : 0;
-    const availH = window.innerHeight - statusH - actionH;
+    // Reserve space for the hotbar at the bottom
+    const hotbar = document.getElementById('hotbar');
+    const hotbarH = (hotbar && hotbar.offsetParent !== null) ? hotbar.offsetHeight + 20 : 0;
+    const availH = window.innerHeight - statusH - actionH - hotbarH;
     const availW = window.innerWidth;
 
     // Fill available space entirely — no fixed aspect ratio
@@ -173,6 +179,11 @@ async function cloudPushAll() {
 async function init() {
     // Boot sound engine (AudioContext created lazily on first gesture)
     SoundEngine.init();
+    // Extra: resume audio on page visibility regain (Safari PWA often suspends)
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) { try { SoundEngine.resume(); } catch (_) {} }
+    });
+    window.addEventListener('pageshow', () => { try { SoundEngine.resume(); } catch (_) {} });
 
     // Restore time multiplier
     const savedMult = parseInt(localStorage.getItem('lalien_time_mult') || '1');
@@ -276,6 +287,12 @@ async function resumeAfterLogin(serverOnline) {
 
     // Autonomous behavior: spontaneous speech, motion, desires
     Autonomy.init();
+
+    // Circadian rhythm + dream generation during long sleep
+    Rhythms.init();
+
+    // LLM-driven inner life — higher cognition scaled with stage
+    Mind.init();
 
     // If pet is egg, show egg screen
     if (Pet.isEgg()) {
@@ -390,6 +407,13 @@ function handleAction(action) {
         return;
     }
 
+    // Dev-friendly: log gating info when feed is attempted
+    if (action === 'feed') {
+        const act = Activity.getType(Pet);
+        const kora = Math.round(Pet.needs[NeedType.KORA]);
+        console.log('[feed] activity=', act, 'KORA=', kora);
+    }
+
     switch (action) {
         case 'feed':
             // Overfeed guard: reject when already very full
@@ -439,7 +463,11 @@ function handleAction(action) {
             Events.emit('pet-changed');
             break;
         case 'meditate':
-            Needs.meditate(Pet.needs, Pet.getStage());
+            if (Pet.getStage() < 6) {
+                showToast('Meditazione non disponibile: deve crescere ancora.');
+                return;
+            }
+            Activity.start(Pet, Activity.Type.MEDITATING);
             SoundEngine.playMeditate();
             SpeechBubble.show('selath... vythi...', Pet.getMood(), 3000);
             Pet.recordAction(7);
@@ -496,6 +524,8 @@ Events.on('evolution', (data) => {
     } else {
         SoundEngine.playEvolution(from, to);
     }
+    // Celebratory laugh at every evolution (stage-appropriate)
+    setTimeout(() => { try { SoundEngine.playLaugh(to); } catch (_) {} }, 800);
     // Crossfade ambient to new stage
     setTimeout(() => SoundEngine.startAmbient(to), 1200);
 });
@@ -515,32 +545,94 @@ Events.on('pet-pet',  () => SoundEngine.playCaress(1));
 // Autonomy: unsolicited lines and fulfillment events
 Events.on('autonomy-speak', (ev) => {
     if (!ev || !ev.line) return;
+    // Pet emits a mood-aware chirp BEFORE the TTS line
+    try { SoundEngine.playMoodChirp(Pet.getStage(), ev.mood || 'neutral'); } catch (_) {}
     SpeechBubble.show(ev.line, ev.mood || 'neutral', 3000);
 });
 Events.on('autonomy-desire-fulfilled', (d) => {
     SpeechBubble.show('ko! thi custode… la-shi', 'happy', 2500);
+    try { SoundEngine.playLaugh(Pet.getStage()); } catch (_) {}
     SoundEngine.playSuccess && SoundEngine.playSuccess();
 });
 Events.on('autonomy-desire-expire', () => {
-    // Silent expiration; minor sad flavour
     SpeechBubble.show('sha…', 'sad', 1500);
+});
+
+// Circadian events
+Events.on('rhythm-morning', () => {
+    SpeechBubble.show('ko! kora thi la-la!', 'happy', 2500);
+    showToast('Buongiorno! È di buon umore.');
+});
+Events.on('rhythm-nap', () => {
+    SpeechBubble.show('moko... siesta...', 'sleepy', 2000);
+    showToast('Sta facendo un pisolino.');
+});
+Events.on('rhythm-dream', (ev) => {
+    const t = ev && ev.text ? ev.text : '…';
+    showToast('💭 Ha sognato: ' + t, 6000);
 });
 
 // Activity lifecycle: speak a line on exit
 Events.on('activity-end', (ev) => {
     if (!ev) return;
+    const st = Pet.getStage();
+    // Stop per-activity vocal loops
+    SoundEngine.stopSnoreLoop && SoundEngine.stopSnoreLoop();
+    SoundEngine.stopMunchLoop && SoundEngine.stopMunchLoop();
+    SoundEngine.stopMeditateHumLoop && SoundEngine.stopMeditateHumLoop();
+    SoundEngine.stopCoughLoop && SoundEngine.stopCoughLoop();
+    SoundEngine.stopWhimperLoop && SoundEngine.stopWhimperLoop();
+    SoundEngine.stopGrumbleLoop && SoundEngine.stopGrumbleLoop();
+
     if (ev.from === 'SLEEPING') {
         if (ev.grumpy) {
             SpeechBubble.show('sha... moko...', 'sad', 2500);
-            SoundEngine.playPoke();
+            try { SoundEngine.playGrumble(st); } catch (_) {}
         } else if (ev.reason === 'duration' || ev.reason === 'auto') {
             SpeechBubble.show('ko... thi, custode', 'happy', 2500);
-            SoundEngine.playClick();
+            try { SoundEngine.playYay(st); } catch (_) {}
         }
     } else if (ev.from === 'EATING' && (ev.reason === 'duration' || ev.reason === 'auto')) {
         SpeechBubble.show('ko-ra... thi!', 'happy', 2000);
+        try { SoundEngine.playYay(st); } catch (_) {}
+    } else if (ev.from === 'MEDITATING' && (ev.reason === 'duration' || ev.reason === 'auto')) {
+        SpeechBubble.show('selath... vythi... ko.', 'happy', 3000);
+        try { SoundEngine.playMeditateHum(st); } catch (_) {}
+    } else if (ev.from === 'SICK' && ev.reason === 'auto') {
+        SpeechBubble.show('ko... thi. sto meglio.', 'happy', 2500);
+        try { SoundEngine.playYay(st); } catch (_) {}
+    } else if (ev.from === 'AFRAID' && ev.reason === 'auto') {
+        SpeechBubble.show('sha... ko. grazie.', 'neutral', 2200);
+        try { SoundEngine.playSigh(st); } catch (_) {}
+    } else if (ev.from === 'SULKY' && ev.reason === 'duration') {
+        SpeechBubble.show('lalí... custode', 'neutral', 2000);
+        try { SoundEngine.playMoodChirp(st, 'neutral'); } catch (_) {}
     }
     Events.emit('pet-changed');
+});
+Events.on('activity-start', (ev) => {
+    if (!ev) return;
+    const st = Pet.getStage();
+    if (ev.type === 'SLEEPING') {
+        try { SoundEngine.playSleepYawn(st); } catch (_) {}
+        setTimeout(() => SoundEngine.startSnoreLoop && SoundEngine.startSnoreLoop(st), 4000);
+    } else if (ev.type === 'EATING') {
+        try { SoundEngine.startMunchLoop && SoundEngine.startMunchLoop(st); } catch (_) {}
+    } else if (ev.type === 'MEDITATING') {
+        try { SoundEngine.startMeditateHumLoop && SoundEngine.startMeditateHumLoop(st); } catch (_) {}
+    } else if (ev.type === 'SICK') {
+        SpeechBubble.show('sha... moko... health sha', 'sad', 3000);
+        try { SoundEngine.playCough(st); } catch (_) {}
+        try { SoundEngine.startCoughLoop && SoundEngine.startCoughLoop(st); } catch (_) {}
+    } else if (ev.type === 'AFRAID') {
+        SpeechBubble.show('shai! sha-sha', 'scared', 2500);
+        try { SoundEngine.playWhimper(st); } catch (_) {}
+        try { SoundEngine.startWhimperLoop && SoundEngine.startWhimperLoop(st); } catch (_) {}
+    } else if (ev.type === 'SULKY') {
+        SpeechBubble.show('sha. thi sha.', 'sad', 2500);
+        try { SoundEngine.playGrumble(st); } catch (_) {}
+        try { SoundEngine.startGrumbleLoop && SoundEngine.startGrumbleLoop(st); } catch (_) {}
+    }
 });
 
 // ---- Natural gestures → actions ----

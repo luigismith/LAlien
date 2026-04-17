@@ -56,8 +56,10 @@ function attachDraggable(btn) {
         active = true;
         ghost = document.createElement('div');
         ghost.className = 'action-ghost';
-        const icon = btn.querySelector('.action-icon');
-        ghost.textContent = icon ? icon.textContent : '•';
+        const icon = btn.querySelector('.action-icon') || btn.querySelector('.need-chip-icon');
+        // Hotbar slots have the emoji directly as text content (no child)
+        const directText = btn.classList.contains('hotbar-slot') ? btn.textContent.trim() : '';
+        ghost.textContent = icon ? icon.textContent : (directText || '•');
         document.body.appendChild(ghost);
         ghost.style.left = x + 'px';
         ghost.style.top = y + 'px';
@@ -101,8 +103,23 @@ function attachDraggable(btn) {
         if (active) {
             const p = pointer(e);
             const onTarget = isOverPetZone(p.clientX, p.clientY);
+            // Detect drop on the canvas but NOT on the pet → spawn an item
+            const canvas = document.getElementById('game-canvas');
+            let onFloor = false;
+            if (canvas && !onTarget) {
+                const r = canvas.getBoundingClientRect();
+                if (p.clientX >= r.left && p.clientX <= r.right && p.clientY >= r.top && p.clientY <= r.bottom) {
+                    onFloor = true;
+                    // Translate client coords → virtual canvas space
+                    const vx = (p.clientX - r.left) * (canvas.width / r.width);
+                    const vy = (p.clientY - r.top) * (canvas.height / r.height);
+                    import('../engine/items.js').then(m => {
+                        m.Items.spawn(action, vx, vy);
+                    }).catch(() => {});
+                }
+            }
             if (ghost) {
-                if (onTarget) {
+                if (onTarget || onFloor) {
                     ghost.classList.add('delivered');
                     setTimeout(() => ghost && ghost.remove(), 200);
                 } else {
@@ -117,6 +134,8 @@ function attachDraggable(btn) {
             if (onTarget) {
                 if (navigator.vibrate) navigator.vibrate([8, 18, 10]);
                 Events.emit('gesture-action', { action });
+            } else if (onFloor) {
+                if (navigator.vibrate) navigator.vibrate([6, 12, 6]);
             }
         }
     };
@@ -138,10 +157,15 @@ function attachDraggable(btn) {
 function initDragActions() {
     const buttons = document.querySelectorAll('#action-bar .btn-action[data-action]');
     buttons.forEach(attachDraggable);
-    // Chips in the status bar are also draggable — unified UX: every actionable
-    // need-chip can be dragged onto the pet ("porgere cibo", "accarezzare"...)
+    // Chips in the status bar are also draggable
     const chips = document.querySelectorAll('#status-needs-dots .need-chip.actionable[data-action]');
     chips.forEach(attachDraggable);
+    // Hotbar inventory slots — same drag logic, action comes from data-item
+    const slots = document.querySelectorAll('#hotbar .hotbar-slot[data-item]');
+    slots.forEach(s => {
+        s.dataset.action = s.dataset.item;  // map so existing attachDraggable works
+        attachDraggable(s);
+    });
 }
 
 // ---------------------------------------------------------------------------

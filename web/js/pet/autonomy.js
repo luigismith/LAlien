@@ -14,14 +14,22 @@ import { NeedType } from './needs.js';
 import { Activity } from './activity.js';
 import { Events } from '../engine/events.js';
 
-const CHECK_INTERVAL_MS = 6 * 1000;      // evaluate every 6s
-const MIN_GAP_SPEAK_MS   = 25 * 1000;    // don't speak unprompted more often than this
-const MIN_GAP_MOVE_MS    = 4 * 1000;
-const MIN_GAP_DESIRE_MS  = 90 * 1000;
+const CHECK_INTERVAL_MS = 6 * 1000;
+// Base gaps (modulated by personality)
+const BASE_GAP_SPEAK_MS   = 22 * 1000;
+const BASE_GAP_MOVE_MS    = 4 * 1000;
+const BASE_GAP_DESIRE_MS  = 90 * 1000;
+const BASE_GAP_TEACH_MS   = 5 * 60 * 1000;   // teach a word every ~5 min at most
+const BASE_GAP_NIGHT_MS   = 8 * 60 * 1000;
+const LONELINESS_MS       = 2 * 60 * 1000;   // 2 min no interaction = sad chirp
 
 let _lastSpeakAt  = 0;
 let _lastMoveAt   = 0;
 let _lastDesireAt = 0;
+let _lastTeachAt  = 0;
+let _lastNightInviteAt = 0;
+let _lastLonelyFireAt = 0;
+let _lastKeeperInteraction = Date.now();
 let _tickHandle   = null;
 let _currentDesire = null;
 
@@ -29,17 +37,34 @@ let _currentDesire = null;
 // Mood-keyed alien phrases (stage-agnostic, readable on stages 1+)
 // ---------------------------------------------------------------------------
 const PHRASES = {
-    happy:   ['la-shi thi!', 'kora thi la-la!', 'selath… kesma!', 'ko! ko thi!', 'thi-thi la-shi'],
-    neutral: ['lalí…', 'kora thi', 'shi… thi.', 'mmh… la-shi', 'ko ko'],
-    sad:     ['sha… lalí', 'moko… thi', 'kesma sha', 'thi… ven…'],
-    scared:  ['shai! sha-sha', 'ven-thi… sha', 'kèsma?! shi-shi'],
-    hungry:  ['kora… kora?', 'ko… kora sha', 'lalí: kora thi', 'shi… kora sha thi'],
-    sleepy:  ['moko… moko thi', 'Zzz… lalí', 'shi… moko sha-la'],
-    dirty:   ['miska sha!', 'vyth-thi miska', 'sha… miska sha'],
-    bored:   ['shi-thi?', 'la-shi ven?', 'kora thi sha… ven'],
-    curious: ['la-la? thi?', 'shai? kesma?', 'kora ven-la?'],
-    lonely:  ['kesma… lalí?', 'custode? custode?', 'thi sha… lalí'],
+    happy:   ['la-shi thi!', 'kora thi la-la!', 'selath… kesma!', 'ko! ko thi!', 'thi-thi la-shi', 'ven-kora! la-la-la!', 'shi shi ko!', 'kesma-thi lalí!'],
+    neutral: ['lalí…', 'kora thi', 'shi… thi.', 'mmh… la-shi', 'ko ko', 'thi…', 'shi-la.', 'lalí-ven.', 'ko. kora. thi.'],
+    sad:     ['sha… lalí', 'moko… thi', 'kesma sha', 'thi… ven…', 'sha-sha… lalí', 'kora sha ven…'],
+    scared:  ['shai! sha-sha', 'ven-thi… sha', 'kèsma?! shi-shi', 'shai… lalí custode', 'sha-sha… sha!'],
+    hungry:  ['kora… kora?', 'ko… kora sha', 'lalí: kora thi', 'shi… kora sha thi', 'kora sha ven!', 'ven-kora?'],
+    sleepy:  ['moko… moko thi', 'Zzz… lalí', 'shi… moko sha-la', 'moko-ven thi…', 'ko sha moko'],
+    dirty:   ['miska sha!', 'vyth-thi miska', 'sha… miska sha', 'miska-sha!', 'ven-miska!'],
+    bored:   ['shi-thi?', 'la-shi ven?', 'kora thi sha… ven', 'ven? ven-la?', 'mmh… shi'],
+    curious: ['la-la? thi?', 'shai? kesma?', 'kora ven-la?', 'shai-thi?', 'ven? ven-kora?'],
+    lonely:  ['kesma… lalí?', 'custode? custode?', 'thi sha… lalí', 'ven-thi? custode…', 'lalí solo… sha'],
+    evening: ['selath… sha. moko ven…', 'kora thi. moko sha-la.', 'ven-ora moko? sha-sha.', 'kèsma. moko thi.'],
+    sing:    ['la-la-la shi', 'mo-ko-la-la', 'kora-kora-thi-la', 'shi-shi-la ven'],
 };
+
+// Teaching moments — pet utters an alien word it knows, keeper reads it (goes in TTS)
+const TEACHABLE_SNIPPETS = [
+    { word: 'kora',   line: 'kora… kora. ko-ra. (fame)' },
+    { word: 'moko',   line: 'moko thi. mo-ko. (sonno)' },
+    { word: 'miska',  line: 'miska… pulizia. miska.' },
+    { word: 'nashi',  line: 'nashi = felicità. nashi-thi.' },
+    { word: 'kesma',  line: 'kesma… carezza. ke-sma.' },
+    { word: 'selath', line: 'selath. cosmico. selath-thi.' },
+    { word: 'ven',    line: 'ven = voglio. ven-kora.' },
+    { word: 'sha',    line: 'sha… no. sha-sha.' },
+    { word: 'thi',    line: 'thi = sì. thi-thi!' },
+    { word: 'ko',     line: 'ko! ko ko. (va bene!)' },
+    { word: 'lalí',   line: 'lalí sono io. la-lí!' },
+];
 
 const DESIRE_ICONS = {
     play:    { icon: '🎮', need: NeedType.NASHI,     label: 'Voglio giocare' },
@@ -111,56 +136,131 @@ function scheduleMove() {
     ensureMotion();
     const m = Pet.motion;
     if (Activity.is(Pet, Activity.Type.SLEEPING)) {
-        // Gentle rocking only
         m.targetOffsetX = (Math.random() - 0.5) * 4;
         m.targetOffsetY = 0;
         m.targetScaleBoost = 0;
         return;
     }
     const roll = Math.random();
-    if (roll < 0.25) {
-        // Small hop
-        m.targetOffsetX = 0;
-        m.targetOffsetY = -18;
-        m.targetScaleBoost = 0.05;
+    if (roll < 0.45) {
+        // WANDER: walk to a new spot on the ground (up to ±150 px horizontally)
+        const target = (Math.random() - 0.5) * 300;
+        m.targetOffsetX = target;
+        m.targetOffsetY = -2;  // slight bounce while walking
+        // After arriving, return-ish to slight wander position (stays away from center)
+        setTimeout(() => {
+            if (!Pet.motion) return;
+            Pet.motion.targetOffsetY = 0;
+        }, 1400);
+    } else if (roll < 0.65) {
+        // Small hop in place
+        m.targetOffsetY = -24;
+        m.targetScaleBoost = 0.06;
         setTimeout(() => {
             if (!Pet.motion) return;
             Pet.motion.targetOffsetY = 0;
             Pet.motion.targetScaleBoost = 0;
         }, 420);
-    } else if (roll < 0.55) {
-        // Lean left or right
-        m.targetOffsetX = (Math.random() > 0.5 ? 1 : -1) * (10 + Math.random() * 12);
-        m.targetOffsetY = -2;
-        setTimeout(() => {
-            if (!Pet.motion) return;
-            Pet.motion.targetOffsetX = 0;
-            Pet.motion.targetOffsetY = 0;
-        }, 900);
-    } else if (roll < 0.80) {
-        // Wiggle (quick double offset)
-        m.targetOffsetX = 7;
-        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = -7), 180);
-        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = 0), 360);
+    } else if (roll < 0.82) {
+        // Wiggle
+        const dir = Math.random() > 0.5 ? 1 : -1;
+        m.targetOffsetX = (m.targetOffsetX || 0) + dir * 12;
+        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = (Pet.motion.targetOffsetX || 0) - dir * 18), 220);
+        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = (Pet.motion.targetOffsetX || 0) + dir * 6), 440);
     } else {
-        // Stretch (squash)
-        m.targetScaleBoost = -0.06;
-        setTimeout(() => Pet.motion && (Pet.motion.targetScaleBoost = 0), 500);
+        // Stretch
+        m.targetScaleBoost = -0.08;
+        setTimeout(() => Pet.motion && (Pet.motion.targetScaleBoost = 0), 520);
     }
 }
 
 // ---------------------------------------------------------------------------
+// Personality traits derived from DNA — modulate everything the pet does
+function personality() {
+    const traits = Pet.dna?.personalityTraits ?? 0;
+    // 0x01 curious, 0x02 calm, 0x04 anxious, 0x08 playful, 0x10 affectionate
+    const curious = (traits & 0x01) ? 1 : 0;
+    const calm    = (traits & 0x02) ? 1 : 0;
+    const anxious = (traits & 0x04) ? 1 : 0;
+    const playful = (traits & 0x08) ? 1 : 0;
+    const affect  = (traits & 0x10) ? 1 : 0;
+    // Speech gap: curious/playful pets talk more; calm pets less
+    const speakMul = calm ? 1.4 : (curious ? 0.7 : 1);
+    const moveMul  = playful ? 0.7 : (calm ? 1.3 : 1);
+    const desireMul= curious ? 0.75 : 1.1;
+    return { curious, calm, anxious, playful, affect, speakMul, moveMul, desireMul };
+}
+
 function checkTick() {
     if (!Pet.isAlive || !Pet.isAlive()) return;
     if (Pet.isEgg && Pet.isEgg()) return;
+    // Silence and no initiative while sleeping — only breathing
+    if (Activity.is(Pet, Activity.Type.SLEEPING)) return;
 
     const nowMs = Date.now();
+    const p = personality();
+    const hour = new Date().getHours();
+    const isEvening = hour >= 20 && hour < 22;
+    const isNight   = hour >= 22 || hour < 6;
 
-    // --- Speech initiative ---
-    if (nowMs - _lastSpeakAt > MIN_GAP_SPEAK_MS) {
-        // Probability scales with: boredom (low NASHI), loneliness (low AFFECTION)
-        const p = 0.25 + (100 - Pet.needs[NeedType.AFFECTION]) / 400 + (100 - Pet.needs[NeedType.NASHI]) / 400;
-        if (Math.random() < p) {
+    // ---- EVENING: invite the keeper to sleep ----
+    if (isEvening && nowMs - _lastNightInviteAt > BASE_GAP_NIGHT_MS) {
+        _lastNightInviteAt = nowMs;
+        const line = PHRASES.evening[Math.floor(Math.random() * PHRASES.evening.length)];
+        Events.emit('autonomy-speak', { line, mood: 'sleepy' });
+        Events.emit('autonomy-desire', { icon: '💤', need: NeedType.MOKO, label: 'Sarebbe ora di dormire', at: nowMs, expiresAt: nowMs + 5 * 60 * 1000 });
+        return;
+    }
+
+    // ---- LONELINESS: if keeper hasn't interacted for > 2 min, chirp sadly ----
+    if (nowMs - _lastKeeperInteraction > LONELINESS_MS
+        && nowMs - _lastLonelyFireAt > 45 * 1000) {
+        _lastLonelyFireAt = nowMs;
+        const loneliness = Math.min(1, (nowMs - _lastKeeperInteraction - LONELINESS_MS) / (5 * 60 * 1000));
+        const mood = loneliness > 0.6 ? 'sad' : 'lonely';
+        const line = pickLine(mood);
+        // Pet actually SUFFERS — slight AFFECTION+SECURITY drop
+        Pet.needs[NeedType.AFFECTION] = Math.max(0, Pet.needs[NeedType.AFFECTION] - 0.5 - loneliness * 2);
+        Pet.needs[NeedType.SECURITY]  = Math.max(0, Pet.needs[NeedType.SECURITY]  - 0.3 - loneliness * 1.5);
+        Events.emit('autonomy-speak', { line, mood });
+        return;
+    }
+
+    // ---- TEACHING: occasionally pet "teaches" an alien word to the keeper ----
+    if (nowMs - _lastTeachAt > BASE_GAP_TEACH_MS * (p.curious ? 0.8 : 1.2)) {
+        if (Math.random() < 0.25 && Pet.stage >= 2) {
+            _lastTeachAt = nowMs;
+            const snippet = TEACHABLE_SNIPPETS[Math.floor(Math.random() * TEACHABLE_SNIPPETS.length)];
+            // Try to add to vocabulary silently (if it's in lexicon)
+            import('../i18n/alien-lexicon.js').then(m => {
+                m.AlienLexicon.tryDiscover && m.AlienLexicon.tryDiscover(snippet.word, 'pet');
+            }).catch(() => {});
+            Events.emit('autonomy-speak', { line: snippet.line, mood: 'curious' });
+            Pet.needs[NeedType.COGNITION] = Math.min(100, Pet.needs[NeedType.COGNITION] + 1.5);
+            return;
+        }
+    }
+
+    // ---- SINGING: happy & well-fed pets occasionally sing a tiny fragment ----
+    if (Pet.needs[NeedType.NASHI] > 75 && Pet.needs[NeedType.AFFECTION] > 60
+        && nowMs - _lastSpeakAt > BASE_GAP_SPEAK_MS * p.speakMul) {
+        if (Math.random() < 0.08) {
+            _lastSpeakAt = nowMs;
+            const line = PHRASES.sing[Math.floor(Math.random() * PHRASES.sing.length)];
+            Events.emit('autonomy-speak', { line, mood: 'happy' });
+            return;
+        }
+    }
+
+    // ---- Normal speech initiative ----
+    if (nowMs - _lastSpeakAt > BASE_GAP_SPEAK_MS * p.speakMul) {
+        // Probability: base 25% + boredom + loneliness + curiosity bonus
+        const prob = 0.25
+            + (100 - Pet.needs[NeedType.AFFECTION]) / 400
+            + (100 - Pet.needs[NeedType.NASHI]) / 400
+            + (p.curious ? 0.15 : 0)
+            + (p.anxious ? 0.10 : 0);
+        if (Math.random() < prob) {
             const mood = pickMood();
             const line = pickLine(mood);
             _lastSpeakAt = nowMs;
@@ -168,18 +268,17 @@ function checkTick() {
         }
     }
 
-    // --- Motion initiative (more frequent, subtle) ---
-    if (nowMs - _lastMoveAt > MIN_GAP_MOVE_MS) {
-        if (Math.random() < 0.5) {
+    // ---- Motion initiative ----
+    if (nowMs - _lastMoveAt > BASE_GAP_MOVE_MS * p.moveMul) {
+        if (Math.random() < 0.5 + p.playful * 0.2) {
             _lastMoveAt = nowMs;
             scheduleMove();
         }
     }
 
-    // --- Desire initiative ---
-    if (nowMs - _lastDesireAt > MIN_GAP_DESIRE_MS && !_currentDesire
-        && !Activity.is(Pet, Activity.Type.SLEEPING)) {
-        if (Math.random() < 0.35) {
+    // ---- Desire initiative ----
+    if (nowMs - _lastDesireAt > BASE_GAP_DESIRE_MS * p.desireMul && !_currentDesire) {
+        if (Math.random() < 0.35 + p.curious * 0.15) {
             const d = pickDesire();
             if (d) {
                 _currentDesire = { ...d, at: nowMs, expiresAt: nowMs + 90 * 1000 };
@@ -189,12 +288,14 @@ function checkTick() {
         }
     }
 
-    // Expire desire after a while
     if (_currentDesire && nowMs > _currentDesire.expiresAt) {
         Events.emit('autonomy-desire-expire', _currentDesire);
         _currentDesire = null;
     }
 }
+
+// Track keeper interactions → reset loneliness timer
+function trackInteraction() { _lastKeeperInteraction = Date.now(); }
 
 // Call this every render frame for smooth motion lerp
 function motionLerp() {
@@ -214,23 +315,32 @@ export const Autonomy = {
         if (_tickHandle) clearInterval(_tickHandle);
         _tickHandle = setInterval(checkTick, CHECK_INTERVAL_MS);
 
-        // Reset triggers
         _lastSpeakAt = Date.now();
         _lastMoveAt  = Date.now();
         _lastDesireAt = Date.now();
+        _lastTeachAt  = Date.now();
+        _lastNightInviteAt = Date.now();
+        _lastKeeperInteraction = Date.now();
 
-        // When the keeper satisfies the current desire, clear it
+        // Track keeper attention: any interaction resets loneliness
+        Events.on('pet-poke', trackInteraction);
+        Events.on('pet-pet',  trackInteraction);
+        Events.on('pet-scrub', trackInteraction);
+        Events.on('gesture-action', trackInteraction);
+
         Events.on('pet-changed', () => {
             if (!_currentDesire) return;
             const need = _currentDesire.need;
             if (Pet.needs[need] > 65) {
                 Events.emit('autonomy-desire-fulfilled', _currentDesire);
                 _currentDesire = null;
-                // Gratitude boost
                 Pet.needs[NeedType.AFFECTION] = Math.min(100, Pet.needs[NeedType.AFFECTION] + 3);
             }
         });
     },
+
+    /** Public: keeper did something — reset loneliness */
+    notifyInteraction() { trackInteraction(); },
 
     /** Called from the render loop for smooth motion */
     updateMotion() { motionLerp(); },

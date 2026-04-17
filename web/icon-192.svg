@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Cosmic rounded-square background -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="60%">
+      <stop offset="0%"  stop-color="#0A2238"/>
+      <stop offset="60%" stop-color="#040E19"/>
+      <stop offset="100%" stop-color="#020A10"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="40%" r="55%">
+      <stop offset="0%"  stop-color="#FFE899"/>
+      <stop offset="40%" stop-color="#D4A534"/>
+      <stop offset="100%" stop-color="#8C6410"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="192" height="192" rx="42" fill="url(#bg)"/>
+
+  <!-- Orbiting stars -->
+  <circle cx="40"  cy="50"  r="1.6" fill="#EAFBFB" opacity="0.9"/>
+  <circle cx="156" cy="44"  r="2"   fill="#C8DCFF" opacity="0.8"/>
+  <circle cx="168" cy="140" r="1.4" fill="#EAFBFB" opacity="0.7"/>
+  <circle cx="34"  cy="150" r="1.8" fill="#C8DCFF" opacity="0.85"/>
+  <circle cx="90"  cy="30"  r="1.2" fill="#EAFBFB" opacity="0.6"/>
+
+  <!-- Halo -->
+  <ellipse cx="96" cy="100" rx="60" ry="18" fill="none" stroke="#3ECFCF" stroke-width="2" opacity="0.35"/>
+
+  <!-- Body -->
+  <ellipse cx="96" cy="110" rx="44" ry="52" fill="url(#core)"/>
+  <!-- Body shine -->
+  <ellipse cx="82" cy="90" rx="14" ry="20" fill="#FFFFFF" opacity="0.25"/>
+
+  <!-- Eyes -->
+  <circle cx="80"  cy="98" r="11" fill="#EAFBFB"/>
+  <circle cx="112" cy="98" r="11" fill="#EAFBFB"/>
+  <circle cx="80"  cy="100" r="5" fill="#0A2238"/>
+  <circle cx="112" cy="100" r="5" fill="#0A2238"/>
+  <circle cx="82"  cy="98"  r="1.6" fill="#FFFFFF"/>
+  <circle cx="114" cy="98"  r="1.6" fill="#FFFFFF"/>
+
+  <!-- Mouth: small happy curve -->
+  <path d="M 86 126 Q 96 134 106 126" fill="none" stroke="#4A1E0A" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Antennae -->
+  <path d="M 80 60 Q 78 42 68 34" fill="none" stroke="#3ECFCF" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 112 60 Q 114 42 124 34" fill="none" stroke="#3ECFCF" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="68"  cy="34" r="4" fill="#3ECFCF"/>
+  <circle cx="124" cy="34" r="4" fill="#3ECFCF"/>
+</svg>

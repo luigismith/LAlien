@@ -34,6 +34,15 @@ const _lastFired = new Map();   // needIndex → timestamp
 let _timer = null;
 let _started = false;
 
+function isIOS() {
+    const ua = navigator.userAgent || '';
+    return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && 'ontouchend' in document);
+}
+function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+        || window.navigator.standalone === true;
+}
+
 function permission() {
     if (!('Notification' in window)) return 'unsupported';
     return Notification.permission;
@@ -52,6 +61,16 @@ function canFire() {
     return true;
 }
 
+async function showViaSW(title, options) {
+    try {
+        if (!('serviceWorker' in navigator)) return false;
+        const reg = await navigator.serviceWorker.ready;
+        if (!reg || !reg.showNotification) return false;
+        await reg.showNotification(title, options);
+        return true;
+    } catch (_) { return false; }
+}
+
 async function fireForNeed(idx, value) {
     const info = NEED_LABELS[idx];
     if (!info) return;
@@ -68,20 +87,24 @@ async function fireForNeed(idx, value) {
         ? `Torna subito: ${Math.round(value)}% di ${NEED_NAMES[idx]}.`
         : `Servirebbero cure: ${NEED_NAMES[idx]} a ${Math.round(value)}%.`;
 
+    const opts = {
+        body,
+        tag: 'lalien-need-' + idx,
+        renotify: severity === 'critical',
+        silent: severity !== 'critical',
+        requireInteraction: severity === 'critical',
+        icon: './icon-192.svg',
+        badge: './icon-192.svg',
+    };
+
+    // Prefer the Service Worker path (REQUIRED on iOS PWA, also works on desktop)
+    if (await showViaSW(title, opts)) return;
+
+    // Fallback to direct Notification() on browsers that support it in the page
     try {
-        const n = new Notification(title, {
-            body,
-            tag: 'lalien-need-' + idx,         // replaces previous notification for same need
-            renotify: severity === 'critical',
-            silent: severity !== 'critical',
-            requireInteraction: severity === 'critical',
-            icon: '/icon-192.png',             // optional, falls back gracefully if missing
-            badge: '/icon-192.png',
-        });
+        const n = new Notification(title, opts);
         n.onclick = () => { window.focus(); n.close(); };
-    } catch (e) {
-        // Some browsers throw on constructor if permission revoked; ignore silently
-    }
+    } catch (_) { /* ignore */ }
 }
 
 function tick() {
@@ -96,7 +119,11 @@ function tick() {
 }
 
 async function requestPermission() {
-    if (!('Notification' in window)) return 'unsupported';
+    // iOS Safari exposes the Notification API ONLY when the PWA is installed
+    // to the home screen. In a regular browser tab the API is missing.
+    if (!('Notification' in window)) {
+        return isIOS() && !isStandalone() ? 'ios-needs-install' : 'unsupported';
+    }
     if (Notification.permission === 'denied') return 'denied';
     if (Notification.permission === 'granted') return 'granted';
     try {
@@ -142,6 +169,9 @@ export const Notifications = {
 
     isEnabled,
     permission,
+    isIOS,
+    isStandalone,
+    needsInstallOnIOS() { return isIOS() && !isStandalone() && !('Notification' in window); },
 
     /** Force-check — useful right after an action in case tab got backgrounded */
     checkNow() { tick(); },
@@ -149,12 +179,14 @@ export const Notifications = {
     /** Send a one-shot test notification to confirm the channel works */
     async test() {
         if (permission() !== 'granted') return false;
-        try {
-            new Notification('🛸 Lalìen — test notifica', {
-                body: 'Perfetto! Ti avviserò quando il tuo Lalìen avrà bisogno di te.',
-                tag: 'lalien-test',
-            });
-            return true;
-        } catch (_) { return false; }
+        const title = '🛸 Lalìen — test notifica';
+        const opts = {
+            body: 'Perfetto! Ti avviserò quando il tuo Lalìen avrà bisogno di te.',
+            tag: 'lalien-test',
+            icon: './icon-192.svg',
+            badge: './icon-192.svg',
+        };
+        if (await showViaSW(title, opts)) return true;
+        try { new Notification(title, opts); return true; } catch (_) { return false; }
     },
 };

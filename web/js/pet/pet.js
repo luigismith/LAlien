@@ -127,9 +127,10 @@ export const Pet = {
 
         this.ageSeconds += Math.floor(timeMultiplier);
 
-        // Activity system (sleeping, eating...) runs first — may modify needs
-        // and returns a decay multiplier (e.g. sleep slows decay to 0.35×).
-        Activity.tick(this);
+        // Activity system (sleeping, eating, sick...) — auto-detects emergent
+        // states (SICK, AFRAID) then runs tick effects and returns decay multiplier.
+        Activity.autoDetect(this);
+        Activity.tick(this, timeMultiplier);
         const actMult = Activity.getDecayMultiplier(this);
         Needs.decay(this.needs, timeMultiplier * actMult, this.stage);
 
@@ -193,7 +194,9 @@ export const Pet = {
     isAlive() { return this.alive; },
     isEgg() { return this.stage === 0; },
     isTranscended() { return this.transcended; },
-    getAgeHours() { return Math.floor(this.ageSeconds / 3600); },
+    getAgeHours() { return this.ageSeconds / 3600; },            // float (used by evolution check)
+    getAgeHoursDisplay() { return Math.floor(this.ageSeconds / 3600); },
+    getAgeMinutes() { return Math.floor(this.ageSeconds / 60); },
     getAgeDays() { return Math.floor(this.ageSeconds / 86400); },
     getName() { return this.name; },
     getTotalInteractions() { return this.voiceInteractions + this.touchInteractions + this.playInteractions; },
@@ -225,7 +228,7 @@ export const Pet = {
 
     _deriveParams() {
         const h = this.dna.hash;
-        this.dna.variantIndex = h[0] % 4;
+        this.dna.variantIndex = h[0] % 16;
         this.dna.appendageCount = h[1] % 7;
         this.dna.appendageLength = h[2] % 4;
         this.dna.eyeSize = h[3] % 4;

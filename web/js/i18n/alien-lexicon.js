@@ -83,14 +83,20 @@ export const AlienLexicon = {
      */
     discoverFromText(text, source = 'pet') {
         if (!text || !_allWords.length) return [];
-        const lower = text.toLowerCase();
+        // Strip diacritics for matching so "kora" matches "kòra", "moko" matches "mokó", etc.
+        const stripDiacritics = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        // Also strip hyphens and periods that split alien words ("mo-ko" → "moko")
+        const normalize = (s) => stripDiacritics(s.toLowerCase()).replace(/[-.]/g, '');
+        const flat = normalize(text);
         const found = [];
         for (const entry of _allWords) {
             const w = entry.word.toLowerCase();
             if (_discovered.has(w)) continue;
-            // Word-boundary match — handles Italian punctuation decently
-            const re = new RegExp('(^|[^a-z\u00c0-\u017f])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z\u00c0-\u017f])', 'i');
-            if (re.test(lower)) {
+            const wn = normalize(w);
+            if (!wn) continue;
+            // Word-boundary match against the normalized text
+            const re = new RegExp('(^|[^a-z0-9])' + wn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z0-9])', 'i');
+            if (re.test(flat)) {
                 this.discover(w, source);
                 found.push(w);
             }

@@ -10,6 +10,9 @@ import { Evolution } from '../pet/evolution.js';
 import { Interactions } from './interactions.js';
 import { Activity } from '../pet/activity.js';
 import { Autonomy } from '../pet/autonomy.js';
+import { SpriteLoader } from './sprite-loader.js';
+import { Items } from '../engine/items.js';
+import { EmotiveEffects } from './emotive-effects.js';
 
 let _canvas, _ctx;
 let _scaleX = 1, _scaleY = 1;
@@ -529,23 +532,69 @@ function getSecurityShake(needs, tick) {
 // Egg
 // ---------------------------------------------------------------------------
 function drawEgg(ctx, cx, cy, tick, pet) {
+    // Pre-hatch excitement: if close to hatching, shake increases
+    let closeToHatch = 0;
+    if (pet) {
+        const pctAge   = Math.min(1, (pet.ageSeconds / 60) / 10);
+        const pctTouch = Math.min(1, (pet.touchInteractions || 0) / 3);
+        closeToHatch = Math.min(pctAge, pctTouch);
+    }
+    const shakeAmp = closeToHatch > 0.7 ? (closeToHatch - 0.7) * 18 : 0;
+    const shakeX = Math.sin(tick * 0.5) * shakeAmp;
+    const shakeY = Math.cos(tick * 0.7) * shakeAmp * 0.6;
+    cx += shakeX; cy += shakeY;
+
     const pulse = Math.sin(tick * 0.03) * 3;
     const glowAlpha = 0.3 + Math.sin(tick * 0.05) * 0.15;
 
-    // Outer glow
-    const grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, 50 + pulse);
-    grad.addColorStop(0, `rgba(62, 207, 207, ${glowAlpha})`);
+    // Ground shadow
+    ctx.fillStyle = `rgba(0,0,0,${0.18 + closeToHatch * 0.1})`;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 50, 34 - shakeAmp * 0.4, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer glow — brightens as hatching nears
+    const glowSize = 55 + pulse + closeToHatch * 18;
+    const grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, glowSize);
+    grad.addColorStop(0, `rgba(62, 207, 207, ${glowAlpha + closeToHatch * 0.3})`);
+    grad.addColorStop(0.5, `rgba(212, 165, 52, ${closeToHatch * 0.25})`);
     grad.addColorStop(1, 'rgba(62, 207, 207, 0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.ellipse(cx, cy, 55 + pulse, 55 + pulse, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, glowSize, glowSize, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Egg body
-    ctx.fillStyle = '#1A3A4A';
+    // Egg body with gradient (top-lit)
+    const eggGrad = ctx.createRadialGradient(cx - 10, cy - 12, 4, cx, cy, 38);
+    eggGrad.addColorStop(0, '#3C5F75');
+    eggGrad.addColorStop(0.7, '#1A3A4A');
+    eggGrad.addColorStop(1, '#0D2230');
+    ctx.fillStyle = eggGrad;
     ctx.beginPath();
     ctx.ellipse(cx, cy, 30, 38 + pulse * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    // Rim highlight
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = '#6EBFD0';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 2, 28, 36, 0, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.stroke();
+    ctx.restore();
+
+    // Specular highlight (top-left)
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    const hl = ctx.createRadialGradient(cx - 10, cy - 14, 0, cx - 10, cy - 14, 12);
+    hl.addColorStop(0, 'rgba(255,255,255,0.9)');
+    hl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hl;
+    ctx.beginPath();
+    ctx.ellipse(cx - 8, cy - 14, 9, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     // Inner veins
     ctx.strokeStyle = `rgba(62, 207, 207, ${0.3 + glowAlpha * 0.3})`;
@@ -558,45 +607,78 @@ function drawEgg(ctx, cx, cy, tick, pet) {
         ctx.stroke();
     }
 
-    // Core pulse
-    ctx.fillStyle = `rgba(62, 207, 207, ${glowAlpha + 0.1})`;
+    // Core pulse — gold & bigger near hatching
+    const corePulse = 8 + pulse * 0.5 + closeToHatch * 4;
+    const coreCol = closeToHatch > 0.8 ? `rgba(212, 165, 52, ${glowAlpha + 0.2})` : `rgba(62, 207, 207, ${glowAlpha + 0.1})`;
+    ctx.fillStyle = coreCol;
     ctx.beginPath();
-    ctx.arc(cx, cy - 2, 8 + pulse * 0.5, 0, Math.PI * 2);
+    ctx.arc(cx, cy - 2, corePulse, 0, Math.PI * 2);
     ctx.fill();
+
+    // Emerging cracks when very close to hatch
+    if (closeToHatch > 0.85) {
+        const crackAlpha = (closeToHatch - 0.85) / 0.15;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 230, 120, ${crackAlpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#FFE699';
+        ctx.shadowBlur = 8;
+        for (let i = 0; i < 3; i++) {
+            const a = i * Math.PI * 2 / 3 + tick * 0.003;
+            const x0 = cx + Math.cos(a) * 8;
+            const y0 = cy + Math.sin(a) * 8;
+            const x1 = cx + Math.cos(a) * 28;
+            const y1 = cy + Math.sin(a) * 32;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo((x0 + x1) / 2 + (Math.random() - 0.5) * 3, (y0 + y1) / 2 + (Math.random() - 0.5) * 3);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
 
     // Interaction area for egg
     Interactions.setPetPosition(cx, cy, 38);
 
-    // Hatching progress (shown below egg)
+    // Hatching progress (shown below egg) — 10 minutes + 3 tocchi
     if (pet) {
-        const ageH   = pet.getAgeHours();
+        const ageMin = pet.getAgeMinutes ? pet.getAgeMinutes() : Math.floor(pet.ageSeconds / 60);
+        const ageSec = Math.floor(pet.ageSeconds % 60);
         const touch  = pet.touchInteractions;
-        const needH  = 24;
-        const needT  = 3;
-        const pctAge   = Math.min(1, ageH / needH);
+        const needMin  = 10;
+        const needT    = 3;
+        const pctAge   = Math.min(1, (pet.ageSeconds / 60) / needMin);
         const pctTouch = Math.min(1, touch / needT);
-        const barW = 80;
-        const barH = 6;
+        const barW = 100;
+        const barH = 7;
         const yBase = cy + 58;
 
         // Time bar
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fillRect(cx - barW / 2, yBase, barW, barH);
-        ctx.fillStyle = pctAge >= 1 ? '#40C470' : '#3ECFCF';
+        const timeGrad = ctx.createLinearGradient(cx - barW / 2, 0, cx + barW / 2, 0);
+        if (pctAge >= 1) { timeGrad.addColorStop(0, '#40C470'); timeGrad.addColorStop(1, '#90E0B0'); }
+        else { timeGrad.addColorStop(0, '#3ECFCF'); timeGrad.addColorStop(1, '#80E8E8'); }
+        ctx.fillStyle = timeGrad;
         ctx.fillRect(cx - barW / 2, yBase, barW * pctAge, barH);
 
         // Touch bar
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.fillRect(cx - barW / 2, yBase + 10, barW, barH);
-        ctx.fillStyle = pctTouch >= 1 ? '#40C470' : '#E060A0';
-        ctx.fillRect(cx - barW / 2, yBase + 10, barW * pctTouch, barH);
+        ctx.fillRect(cx - barW / 2, yBase + 12, barW, barH);
+        const tGrad = ctx.createLinearGradient(cx - barW / 2, 0, cx + barW / 2, 0);
+        if (pctTouch >= 1) { tGrad.addColorStop(0, '#40C470'); tGrad.addColorStop(1, '#90E0B0'); }
+        else { tGrad.addColorStop(0, '#E060A0'); tGrad.addColorStop(1, '#F0A0C8'); }
+        ctx.fillStyle = tGrad;
+        ctx.fillRect(cx - barW / 2, yBase + 12, barW * pctTouch, barH);
 
         // Labels
-        ctx.fillStyle = 'rgba(224,224,224,0.55)';
-        ctx.font = '10px sans-serif';
+        ctx.fillStyle = 'rgba(234,251,251,0.8)';
+        ctx.font = 'bold 10px sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(`${ageH}/${needH}h`, cx - barW / 2, yBase - 3);
-        ctx.fillText(`tocchi ${touch}/${needT}`, cx - barW / 2, yBase + 7);
+        const timeStr = ageMin >= needMin ? '✓' : `${ageMin}:${String(ageSec).padStart(2,'0')}/${needMin}:00`;
+        ctx.fillText(`⏳ ${timeStr}`, cx - barW / 2, yBase - 3);
+        ctx.fillText(`✋ ${touch}/${needT}`, cx - barW / 2, yBase + 9);
     }
 }
 
@@ -604,20 +686,106 @@ function drawEgg(ctx, cx, cy, tick, pet) {
 // Creature
 // ---------------------------------------------------------------------------
 function drawCreature(ctx, pet, cx, cy, tick) {
+    // Preload this stage's sprites the first time we see it
+    SpriteLoader.preloadStage(pet.stage);
+
+    // Activity-based body transforms (sleep lies down, afraid shrinks, etc.)
+    const act = Activity.getType(pet);
+    const isSleeping = act === 'SLEEPING';
+    const isAfraid = act === 'AFRAID';
+    const isEating = act === 'EATING';
+    // Breath rate
+    const breathRate = isSleeping ? 0.012 : (isAfraid ? 0.055 : (isEating ? 0.045 : 0.025));
+    const breathAmp  = isSleeping ? 3.5 : (isAfraid ? 1.0 : (isEating ? 2.5 : 2.0));
+    const breathe = Math.sin(tick * breathRate) * breathAmp;
+
+    // Security shake
+    const shake = getSecurityShake(pet.needs, tick);
+    cx += shake.x;
+    cy += shake.y + breathe;
+
+    // Afraid tremble
+    if (isAfraid) { cx += (Math.random() - 0.5) * 1.5; cy += (Math.random() - 0.5) * 1.5; }
+    // Eating bob
+    if (isEating) cx += Math.sin(tick * 0.12) * 3;
+
+    // Ground shadow under the pet (uses activity-aware scale)
+    const baseSize = 25 + pet.stage * 8;
+    const bodyW = baseSize + (pet.dna?.bodyCurvature ?? 0) * 3;
+    const bodyH = baseSize * 1.2 + breathe;
+    const groundY = cy + bodyH + 10;
+    const hopLift = Math.max(0, -((pet.motion && pet.motion.offsetY) || 0));
+    const shadowW = bodyW * (0.9 - hopLift * 0.004);
+    if (shadowW > 8) {
+        const sg = ctx.createRadialGradient(cx, groundY, 2, cx, groundY, shadowW);
+        sg.addColorStop(0, `rgba(0,0,0,${0.22 - hopLift * 0.0015})`);
+        sg.addColorStop(0.7, 'rgba(0,0,0,0.08)');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg;
+        ctx.beginPath();
+        ctx.ellipse(cx, groundY, shadowW, Math.max(2, 6 - hopLift * 0.08), 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Global filters for mood states (desaturation during sick/sulky)
+    ctx.save();
+    if (act === 'SICK') ctx.filter = 'saturate(0.55) brightness(0.92)';
+    else if (act === 'SULKY') ctx.filter = 'saturate(0.75) brightness(0.85)';
+
+    // Try the pixel-art sprite first
+    const drawn = SpriteLoader.draw(ctx, pet, cx, cy, 1);
+    if (!drawn) {
+        // Fallback: procedural rendering while sprites are loading
+        _drawCreatureBody(pet, ctx, cx, cy, tick);
+    } else {
+        // Keep Interactions hit area in sync with the sprite footprint
+        const sz = SpriteLoader.getBodySize(pet, 1);
+        Interactions.setPetPosition(cx, cy, sz.w * 0.45);
+    }
+    ctx.restore();
+
+    // Draw needs banner above the pet (overlay)
+    drawNeedsIndicators(ctx, pet, cx, cy, bodyW, bodyH, tick);
+}
+
+function _drawCreatureBody(pet, ctx, cx, cy, tick) {
     const colors = getPetColors(pet);
     const stage = pet.stage;
     const mood = pet.getMood();
-    const breathe = Math.sin(tick * 0.025) * 2;
+    const actType = Activity.getType(pet);
+    const isSleeping = actType === 'SLEEPING';
+    const isEating   = actType === 'EATING';
+    const isSick     = actType === 'SICK';
+    const isAfraid   = actType === 'AFRAID';
+    const isSulky    = actType === 'SULKY';
+    const isMeditating = actType === 'MEDITATING';
+
+    // Breath rate: slower & deeper when asleep, quicker when scared/eating
+    const breathRate = isSleeping ? 0.012 : (isAfraid ? 0.055 : (isEating ? 0.045 : 0.025));
+    const breathAmp  = isSleeping ? 3.5   : (isAfraid ? 1.0  : (isEating ? 2.5  : 2.0));
+    const breathe = Math.sin(tick * breathRate) * breathAmp;
 
     // Security shake
     const shake = getSecurityShake(pet.needs, tick);
     cx += shake.x;
     cy += shake.y;
 
-    // Size scales with stage
-    const baseSize = 25 + stage * 8;
-    const bodyW = baseSize + pet.dna.bodyCurvature * 3;
-    const bodyH = baseSize * 1.2 + breathe;
+    // Posture: slight flattening when asleep (curled on ground)
+    const size = 25 + stage * 8;
+    const baseSize = size;
+    const postureH = isSleeping ? 0.88 : (isSulky ? 0.95 : 1.0);
+    const postureW = isSleeping ? 1.10 : (isAfraid ? 0.92 : 1.0);
+    const bodyW = (baseSize + pet.dna.bodyCurvature * 3) * postureW;
+    const bodyH = (baseSize * 1.2 + breathe) * postureH;
+
+    // When sleeping, drop the pet a bit closer to the ground
+    if (isSleeping) cy += size * 0.18;
+    // When afraid, shrink a little
+    if (isAfraid)   cy += size * 0.08;
+    // Lean forward while eating (wobble)
+    if (isEating)   cx += Math.sin(tick * 0.12) * 3;
+    // Afraid trembling micro-motion
+    if (isAfraid)   { cx += (Math.random() - 0.5) * 1.5; cy += (Math.random() - 0.5) * 1.5; }
 
     // Update interaction hit area
     Interactions.setPetPosition(cx, cy, bodyW);
@@ -633,12 +801,22 @@ function drawCreature(ctx, pet, cx, cy, tick) {
         ctx.fill();
     }
 
-    // Shadow on ground
+    // Ground shadow (soft radial blur), narrower when the pet hops
     const groundY = cy + bodyH + 15;
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
-    ctx.beginPath();
-    ctx.ellipse(cx, groundY, bodyW * 0.9, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const hopLift = Math.max(0, -((pet.motion && pet.motion.offsetY) || 0));
+    const shadowW = bodyW * (0.9 - hopLift * 0.004);
+    const shadowH = 6 - hopLift * 0.08;
+    const shadowAlpha = 0.18 - hopLift * 0.0015;
+    if (shadowW > 8) {
+        const sg = ctx.createRadialGradient(cx, groundY, 2, cx, groundY, shadowW);
+        sg.addColorStop(0, `rgba(0,0,0,${Math.max(0.05, shadowAlpha)})`);
+        sg.addColorStop(0.7, `rgba(0,0,0,${Math.max(0.02, shadowAlpha * 0.4)})`);
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg;
+        ctx.beginPath();
+        ctx.ellipse(cx, groundY, shadowW, Math.max(2, shadowH), 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
     // Body glow
     const glowR = bodyW + 15 + Math.sin(tick * 0.02) * 4;
@@ -700,14 +878,37 @@ function drawCreature(ctx, pet, cx, cy, tick) {
     }
 
     // Main body
-    const bodyGrad = ctx.createRadialGradient(cx - bodyW * 0.2, cy - bodyH * 0.2, 0, cx, cy, bodyW);
+    const bodyGrad = ctx.createRadialGradient(cx - bodyW * 0.25, cy - bodyH * 0.28, bodyW * 0.1, cx, cy, bodyW);
     bodyGrad.addColorStop(0, colors.glow);
-    bodyGrad.addColorStop(0.6, colors.core);
+    bodyGrad.addColorStop(0.55, colors.core);
     bodyGrad.addColorStop(1, colors.dark);
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
     ctx.ellipse(cx, cy, bodyW, bodyH, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    // Rim light (top edge) — extra depth; dimmed when SICK/AFRAID
+    const rimAlpha = isSleeping ? 0.18 : (isSick ? 0.12 : (isAfraid ? 0.20 : 0.32));
+    ctx.save();
+    ctx.globalAlpha = rimAlpha;
+    ctx.strokeStyle = colors.glow;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - bodyH * 0.08, bodyW * 0.96, bodyH * 0.96, 0, Math.PI * 1.1, Math.PI * 1.9);
+    ctx.stroke();
+    ctx.restore();
+
+    // Specular highlight (small bright spot, upper-left)
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    const hl = ctx.createRadialGradient(cx - bodyW * 0.35, cy - bodyH * 0.4, 0, cx - bodyW * 0.35, cy - bodyH * 0.4, bodyW * 0.35);
+    hl.addColorStop(0, 'rgba(255,255,255,0.9)');
+    hl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hl;
+    ctx.beginPath();
+    ctx.ellipse(cx - bodyW * 0.3, cy - bodyH * 0.35, bodyW * 0.3, bodyH * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     // Core pattern
     const patternR = bodyW * 0.5;
@@ -745,11 +946,55 @@ function drawCreature(ctx, pet, cx, cy, tick) {
     const eyeY = cy - bodyH * 0.2;
     const cursor = Interactions.getCursorPos();
 
-    // Sleepy eyes when moko is low
+    // Eye state: closed when sleeping, squinted when tired, idle blink otherwise
+    // (activity flags isSleeping/isEating/isSick/isAfraid/isSulky/isMeditating are already
+    //  declared at the top of _drawCreatureBody — reuse them.)
+    const activityType = actType;
+
+    // Blink animation: ~3.5s cycle, closes for ~120ms
+    const blinkCycle = (tick % 210);     // ~3.5s at 60fps
+    const blinkFactor = blinkCycle < 8 ? 1 - (blinkCycle / 8)
+                      : blinkCycle < 16 ? (blinkCycle - 8) / 8 : 1;
+    // Meditating: eyes half-closed
+    const meditateFactor = isMeditating ? 0.35 : 1;
+    // Afraid: eyes wide open
+    const afraidFactor = isAfraid ? 1.25 : 1;
+    // Sulky: eyes half-closed, averted
+    const sulkyFactor = isSulky ? 0.55 : 1;
+
     const sleepy = pet.needs[NeedType.MOKO] < 35;
-    const sleepSquint = sleepy ? 0.5 + (pet.needs[NeedType.MOKO] / 35) * 0.5 : 1.0;
+    const tiredSquint = sleepy ? 0.5 + (pet.needs[NeedType.MOKO] / 35) * 0.5 : 1.0;
+
+    const sleepSquint = isSleeping
+        ? 0.02
+        : tiredSquint * blinkFactor * meditateFactor * afraidFactor * sulkyFactor;
+
+    // When truly sleeping, draw closed-eye curves then skip normal pupils.
+    if (isSleeping) {
+        for (const side of [-1, 1]) {
+            const ex = cx + side * (bodyW * 0.28);
+            const wob = Math.sin(tick * 0.025 + side) * 0.8;
+            ctx.save();
+            ctx.strokeStyle = '#1A1A2E';
+            ctx.lineWidth = Math.max(1.5, eyeSize * 0.18);
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(ex - eyeSize * 0.9, eyeY + wob);
+            ctx.quadraticCurveTo(ex, eyeY + eyeSize * 0.35 + wob, ex + eyeSize * 0.9, eyeY + wob);
+            ctx.stroke();
+            ctx.lineWidth = Math.max(1, eyeSize * 0.1);
+            ctx.beginPath();
+            ctx.moveTo(ex - eyeSize * 0.55, eyeY - eyeSize * 0.05 + wob);
+            ctx.lineTo(ex - eyeSize * 0.72, eyeY - eyeSize * 0.3  + wob);
+            ctx.moveTo(ex + eyeSize * 0.55, eyeY - eyeSize * 0.05 + wob);
+            ctx.lineTo(ex + eyeSize * 0.72, eyeY - eyeSize * 0.3  + wob);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
 
     for (const side of [-1, 1]) {
+        if (isSleeping) break;
         const ex = cx + side * eyeSpacing;
 
         ctx.save();
@@ -825,9 +1070,21 @@ function drawCreature(ctx, pet, cx, cy, tick) {
     // Mouth/rithó
     const mouthY = cy + bodyH * 0.15;
     ctx.strokeStyle = colors.eye + '88';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    if (mood === 'happy' || Interactions.isPetting()) {
+    if (isSleeping) {
+        // Small open "O" for breathing
+        const breath = 1 + Math.sin(tick * 0.04) * 0.15;
+        ctx.ellipse(cx, mouthY + 2, 2.5 * breath, 2 * breath, 0, 0, Math.PI * 2);
+    } else if (activityType === 'EATING') {
+        // Mouth chewing (opens/closes with tick)
+        const chew = Math.abs(Math.sin(tick * 0.18));
+        ctx.ellipse(cx, mouthY + 1, 6, 2 + 3 * chew, 0, 0, Math.PI * 2);
+    } else if (isSulky) {
+        // Downward pout
+        ctx.arc(cx, mouthY + 7, 5, Math.PI + 0.3, -0.3);
+    } else if (mood === 'happy' || Interactions.isPetting()) {
         ctx.arc(cx, mouthY, 6, 0.2, Math.PI - 0.2);
     } else if (mood === 'sad') {
         ctx.arc(cx, mouthY + 6, 6, Math.PI + 0.2, -0.2);
@@ -967,13 +1224,114 @@ function drawActivityOverlay(ctx, pet, cx, cy, tick) {
             ctx.fill();
             ctx.restore();
         }
-        // Chewing label
         ctx.save();
         ctx.fillStyle = '#E07030';
         ctx.font = 'bold 11px sans-serif';
         ctx.textAlign = 'center';
         ctx.globalAlpha = 0.9;
         ctx.fillText('· KORA ·', cx, cy + 90);
+        ctx.restore();
+    } else if (type === 'MEDITATING') {
+        // Golden aura + orbiting particles
+        ctx.save();
+        const auraR = 70 + Math.sin(tick * 0.05) * 8;
+        const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, auraR * 1.6);
+        grad.addColorStop(0, 'rgba(212,165,52,0.45)');
+        grad.addColorStop(0.5, 'rgba(212,165,52,0.15)');
+        grad.addColorStop(1, 'rgba(212,165,52,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(cx, cy, auraR * 1.6, 0, Math.PI * 2); ctx.fill();
+        // Orbiting runes
+        for (let i = 0; i < 5; i++) {
+            const ang = tick * 0.015 + i * (Math.PI * 2 / 5);
+            const ox = cx + Math.cos(ang) * auraR;
+            const oy = cy + Math.sin(ang) * auraR * 0.45;
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = '#FFE899';
+            ctx.shadowColor = '#D4A534';
+            ctx.shadowBlur = 10;
+            ctx.beginPath(); ctx.arc(ox, oy, 2.8, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+        ctx.save();
+        ctx.fillStyle = '#D4A534';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('· SELATH ·', cx, cy + 92);
+        ctx.restore();
+    } else if (type === 'SICK') {
+        // Sickly green haze + occasional sneeze
+        ctx.save();
+        ctx.globalAlpha = 0.18 + Math.sin(tick * 0.02) * 0.08;
+        const g = ctx.createRadialGradient(cx, cy, 20, cx, cy, 100);
+        g.addColorStop(0, 'rgba(120,180,80,0.4)');
+        g.addColorStop(1, 'rgba(60,120,40,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx, cy, 100, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        // Small sweat drops
+        for (let i = 0; i < 2; i++) {
+            const phase = (tick * 0.6 + i * 80) % 100;
+            const life = 1 - phase / 100;
+            if (life <= 0) continue;
+            ctx.save();
+            ctx.globalAlpha = life;
+            ctx.fillStyle = '#9ED080';
+            ctx.beginPath();
+            ctx.arc(cx - 30 + i * 60, cy - 50 - phase * 0.3, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        ctx.save();
+        ctx.fillStyle = '#90C070';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('· MALATO ·', cx, cy + 92);
+        ctx.restore();
+    } else if (type === 'AFRAID') {
+        // Shivering darkness + wide pupils already handled in drawCreature via hue;
+        // here we draw fear spikes
+        for (let i = 0; i < 8; i++) {
+            const ang = i * (Math.PI * 2 / 8) + Math.sin(tick * 0.04) * 0.06;
+            const r1 = 38, r2 = 46;
+            ctx.save();
+            ctx.globalAlpha = 0.35 + Math.sin(tick * 0.08 + i) * 0.15;
+            ctx.strokeStyle = '#A070C0';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+            ctx.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2);
+            ctx.stroke();
+            ctx.restore();
+        }
+        ctx.save();
+        ctx.fillStyle = '#A070C0';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('· IMPAURITO ·', cx, cy + 92);
+        ctx.restore();
+    } else if (type === 'SULKY') {
+        // Tiny cloud over the head
+        ctx.save();
+        ctx.fillStyle = 'rgba(80,80,100,0.7)';
+        ctx.strokeStyle = 'rgba(120,120,150,0.9)';
+        ctx.lineWidth = 1.2;
+        const headY = cy - 72;
+        ctx.beginPath(); ctx.arc(cx - 12, headY,     8, 0, Math.PI * 2);
+        ctx.arc(cx + 4,  headY - 4,  9, 0, Math.PI * 2);
+        ctx.arc(cx + 18, headY + 2,  7, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+        // Rain drop
+        const drop = (tick * 0.5) % 40;
+        ctx.globalAlpha = 1 - drop / 40;
+        ctx.fillStyle = '#9AAAC5';
+        ctx.beginPath(); ctx.arc(cx, headY + 10 + drop, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.fillStyle = '#8090A8';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('· MUSO LUNGO ·', cx, cy + 92);
         ctx.restore();
     }
 }
@@ -1045,14 +1403,23 @@ export const Renderer = {
         // Background with ground
         const groundY = drawBackground(_ctx, w, h, _tick, pet);
 
+        // Keep Items aware of current canvas size (for wander targeting)
+        Items.setStage(w, h);
+
+        // Draw items behind the pet (items on the floor)
+        Items.draw(_ctx, _tick);
+
         // Autonomous motion (smooth lerp); applied as offset to the pet position
         Autonomy.updateMotion();
         const mo = pet.motion || { offsetX: 0, offsetY: 0, bob: 0, scaleBoost: 0 };
 
-        // Pet vertical position: sit on the ground (+autonomous motion)
+        // Emotive screen-shake from flinches/scares
+        const shake = EmotiveEffects.getShakeOffset();
+
+        // Pet vertical position: sit on the ground (+autonomous motion + shake)
         const baseCy = pet.isEgg() ? h * 0.4 : groundY - 30 - (pet.stage * 5);
-        const liveCx = cx + (mo.offsetX || 0);
-        const liveCy = baseCy + (mo.offsetY || 0) + (mo.bob || 0);
+        const liveCx = cx + (mo.offsetX || 0) + shake.x;
+        const liveCy = baseCy + (mo.offsetY || 0) + (mo.bob || 0) + shake.y;
 
         // Draw pet
         if (!pet.isAlive()) {
@@ -1077,23 +1444,83 @@ export const Renderer = {
         // Interaction particles (hearts, ripples)
         Interactions.update(_ctx, _tick);
 
-        // Evolution animation
+        // Emotive pixel-art overlays (particles, thinking, flash)
+        EmotiveEffects.draw(_ctx, liveCx, liveCy, _tick);
+
+        // Evolution animation — radial starburst + soft flash + centered title
         if (Evolution.isEvolving()) {
-            const flash = Math.sin(_tick * 0.1) * 0.3 + 0.3;
-            _ctx.fillStyle = `rgba(212, 165, 52, ${flash})`;
+            // Track progress (0..1 over ~3 seconds @ 60fps)
+            Evolution._animTick = (Evolution._animTick || 0) + 1;
+            const prog = Math.min(1, Evolution._animTick / 180);
+            const flashIntensity = Math.sin(prog * Math.PI);   // 0→1→0
+
+            // Soft gold wash
+            const wash = _ctx.createRadialGradient(cx, h / 2, 10, cx, h / 2, Math.max(w, h));
+            wash.addColorStop(0, `rgba(255,230,120,${0.55 * flashIntensity})`);
+            wash.addColorStop(0.4, `rgba(212,165,52,${0.35 * flashIntensity})`);
+            wash.addColorStop(1, `rgba(10,25,41,0)`);
+            _ctx.fillStyle = wash;
             _ctx.fillRect(0, 0, w, h);
 
-            _ctx.fillStyle = '#D4A534';
-            _ctx.font = 'bold 20px sans-serif';
-            _ctx.textAlign = 'center';
-            _ctx.fillText(
-                `${pet.getStageNameFor(Evolution.getFromStage())} → ${pet.getStageNameFor(Evolution.getToStage())}`,
-                cx, h - 40
-            );
+            // Rotating radial rays from pet centre
+            _ctx.save();
+            _ctx.globalAlpha = 0.6 * flashIntensity;
+            _ctx.strokeStyle = '#FFE899';
+            _ctx.lineWidth = 2;
+            const rays = 16;
+            const raysR = 40 + prog * 300;
+            for (let i = 0; i < rays; i++) {
+                const ang = (Math.PI * 2 * i / rays) + _tick * 0.02;
+                _ctx.beginPath();
+                _ctx.moveTo(cx + Math.cos(ang) * 20, h / 2 + Math.sin(ang) * 20);
+                _ctx.lineTo(cx + Math.cos(ang) * raysR, h / 2 + Math.sin(ang) * raysR);
+                _ctx.stroke();
+            }
+            _ctx.restore();
 
-            if (_tick % 90 === 0) {
+            // Sparkle shower (random points with glow)
+            for (let i = 0; i < 8; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const r = 40 + Math.random() * raysR;
+                const sx = cx + Math.cos(a) * r;
+                const sy = h / 2 + Math.sin(a) * r;
+                _ctx.save();
+                _ctx.globalAlpha = 0.8 * flashIntensity;
+                _ctx.fillStyle = '#FFFFFF';
+                _ctx.shadowColor = '#FFE899';
+                _ctx.shadowBlur = 10;
+                _ctx.beginPath();
+                _ctx.arc(sx, sy, 1.6 + Math.random() * 1.8, 0, Math.PI * 2);
+                _ctx.fill();
+                _ctx.restore();
+            }
+
+            // Transition title — fade in, hold, fade out
+            const titleAlpha = prog < 0.15 ? prog / 0.15
+                             : prog > 0.85 ? (1 - prog) / 0.15 : 1;
+            _ctx.save();
+            _ctx.globalAlpha = titleAlpha;
+            _ctx.fillStyle = '#FFE899';
+            _ctx.shadowColor = '#D4A534';
+            _ctx.shadowBlur = 14;
+            _ctx.font = 'bold 24px sans-serif';
+            _ctx.textAlign = 'center';
+            _ctx.fillText(pet.getStageNameFor(Evolution.getToStage()), cx, h / 2 - 100);
+            _ctx.font = '13px monospace';
+            _ctx.shadowBlur = 4;
+            _ctx.fillStyle = 'rgba(234,251,251,0.9)';
+            _ctx.fillText(
+                `${pet.getStageNameFor(Evolution.getFromStage())}  →  ${pet.getStageNameFor(Evolution.getToStage())}`,
+                cx, h / 2 - 72
+            );
+            _ctx.restore();
+
+            if (Evolution._animTick > 180) {
+                Evolution._animTick = 0;
                 Evolution.clearState();
             }
+        } else if (Evolution._animTick) {
+            Evolution._animTick = 0;
         }
     }
 };
