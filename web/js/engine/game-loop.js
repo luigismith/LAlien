@@ -352,14 +352,41 @@ async function resumeAfterLogin(serverOnline) {
             chatMic.classList.add('recording');
             try {
                 SoundEngine.playMicOpen && SoundEngine.playMicOpen();
-                const text = await STTClient.listen();
+                let text = null;
+                // Try Web Speech Recognition API first (free, no key needed)
+                const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (SpeechRec) {
+                    text = await new Promise((resolve, reject) => {
+                        const rec = new SpeechRec();
+                        rec.lang = localStorage.getItem('lalien_language') || 'it-IT';
+                        rec.interimResults = false;
+                        rec.maxAlternatives = 1;
+                        rec.onresult = (e) => resolve(e.results[0][0].transcript);
+                        rec.onerror = (e) => reject(e.error);
+                        rec.onend = () => resolve(null);
+                        rec.start();
+                        setTimeout(() => { try { rec.stop(); } catch(_){} }, 10000);
+                    });
+                } else {
+                    // Fallback to STT Client (requires OpenAI key)
+                    text = await STTClient.listen();
+                }
                 SoundEngine.playMicClose && SoundEngine.playMicClose();
                 if (text) {
                     chatInput.value = text;
                     sendInlineChat();
+                } else {
+                    showToast('Non ho capito, riprova');
                 }
-            } catch (_) {
-                showToast('Microfono non disponibile');
+            } catch (err) {
+                const msg = typeof err === 'string' ? err : (err?.message || err?.error || '');
+                if (/not-allowed|denied/i.test(msg)) {
+                    showToast('Permesso microfono negato. Attivalo dalle impostazioni del browser.');
+                } else if (/no-speech/i.test(msg)) {
+                    showToast('Non ho sentito nulla, riprova');
+                } else {
+                    showToast('Microfono: ' + (msg || 'non disponibile'));
+                }
             }
             recording = false;
             chatMic.classList.remove('recording');
