@@ -19,14 +19,14 @@ import { Activity } from '../pet/activity.js';
 //                      down slowly over time (1 use per 60s), then vanishes
 const ITEM_TYPES = {
     feed:   { icon: '🍎', label: 'Cibo',     kind: 'food',  mode: 'consumable', need: NeedType.KORA,      lifespanMs: 15*60*1000 },
-    play:   { icon: '🎮', label: 'Giocattolo', kind: 'toy', mode: 'persistent', need: NeedType.NASHI,     uses: 8,  lifespanMs: 30*60*1000, tickBonus: 0.35, stayRadius: 50 },
-    caress: { icon: '🧸', label: 'Peluche',  kind: 'plush', mode: 'persistent', need: NeedType.AFFECTION, uses: 12, lifespanMs: 60*60*1000, tickBonus: 0.25, stayRadius: 40 },
-    talk:   { icon: '📻', label: 'Radio',    kind: 'media', mode: 'persistent', need: NeedType.COGNITION, uses: 10, lifespanMs: 30*60*1000, tickBonus: 0.30, stayRadius: 60 },
+    play:   { icon: '🎮', label: 'Giocattolo', kind: 'toy', mode: 'persistent', need: NeedType.NASHI,     needs: [NeedType.NASHI, NeedType.CURIOSITY], uses: 8,  lifespanMs: 30*60*1000, tickBonus: 0.35, stayRadius: 50 },
+    caress: { icon: '🧸', label: 'Peluche',  kind: 'plush', mode: 'persistent', need: NeedType.AFFECTION, needs: [NeedType.AFFECTION, NeedType.SECURITY], uses: 12, lifespanMs: 60*60*1000, tickBonus: 0.25, stayRadius: 40 },
+    talk:   { icon: '📻', label: 'Radio',    kind: 'media', mode: 'persistent', need: NeedType.COGNITION, needs: [NeedType.COGNITION, NeedType.CURIOSITY], uses: 10, lifespanMs: 30*60*1000, tickBonus: 0.30, stayRadius: 60 },
     clean:  { icon: '🧼', label: 'Sapone',   kind: 'clean', mode: 'consumable', need: NeedType.MISKA,     uses: 3,  lifespanMs: 10*60*1000 },
     sleep:  { icon: '🛏️', label: 'Cuscino',  kind: 'bed',   mode: 'consumable', need: NeedType.MOKO,      lifespanMs: 60*60*1000 },
     meditate:{ icon: '✨', label: 'Cristallo', kind: 'crystal', mode: 'consumable', need: NeedType.COSMIC, uses: 3, lifespanMs: 60*60*1000 },
-    ball:   { icon: '🏐', label: 'Palla',     kind: 'ball',  mode: 'persistent', need: NeedType.CURIOSITY, uses: 8, lifespanMs: 20*60*1000, tickBonus: 0.30, stayRadius: 45 },
-    puzzle: { icon: '🧩', label: 'Puzzle',    kind: 'puzzle',mode: 'persistent', need: NeedType.COGNITION, uses: 10, lifespanMs: 40*60*1000, tickBonus: 0.25, stayRadius: 55 },
+    ball:   { icon: '🏐', label: 'Palla',     kind: 'ball',  mode: 'persistent', need: NeedType.CURIOSITY, needs: [NeedType.CURIOSITY, NeedType.NASHI], uses: 8, lifespanMs: 20*60*1000, tickBonus: 0.30, stayRadius: 45 },
+    puzzle: { icon: '🧩', label: 'Puzzle',    kind: 'puzzle',mode: 'persistent', need: NeedType.COGNITION, needs: [NeedType.COGNITION, NeedType.NASHI, NeedType.CURIOSITY], uses: 10, lifespanMs: 40*60*1000, tickBonus: 0.25, stayRadius: 55 },
 };
 
 let _items = [];
@@ -40,20 +40,21 @@ function now() { return Date.now(); }
 function ensureTarget() {
     if (!_items.length) { _targetItemId = null; return null; }
 
-    // Always re-evaluate: pick the item matching the MOST URGENT need (<65%)
+    // Re-evaluate every tick: pick item matching the most urgent need.
+    // Items can respond to MULTIPLE needs (e.g. puzzle → COGNITION + NASHI + CURIOSITY).
+    // An item is "interesting" if ANY of its mapped needs is <65%.
+    const lowestNeed = (def) => {
+        const arr = def.needs || [def.need];
+        return Math.min(...arr.map(n => Pet.needs[n] ?? 100));
+    };
     const candidates = _items.filter(it => {
         const def = ITEM_TYPES[it.action];
         if (!def) return false;
-        const need = Pet.needs[def.need] ?? 100;
-        return need < 65;
+        return lowestNeed(def) < 65;
     });
     if (!candidates.length) { _targetItemId = null; return null; }
 
-    candidates.sort((a, b) => {
-        const na = Pet.needs[ITEM_TYPES[a.action]?.need] ?? 100;
-        const nb = Pet.needs[ITEM_TYPES[b.action]?.need] ?? 100;
-        return na - nb;
-    });
+    candidates.sort((a, b) => lowestNeed(ITEM_TYPES[a.action]) - lowestNeed(ITEM_TYPES[b.action]));
     const t = candidates[0];
     _targetItemId = t ? t.id : null;
     return t;
@@ -155,10 +156,12 @@ export const Items = {
         const itemAge = now() - target.createdAt;
         if (distToTarget < reach && itemAge > 2000) {
             if (cfg.mode === 'persistent') {
-                // Continuous bonus while near the toy — keeps the pet entertained
-                pet.needs[cfg.need] = Math.min(100, pet.needs[cfg.need] + (cfg.tickBonus || 0.2));
-                // Also a tiny ambient boost so nearby toys lift mood
-                pet.needs[NeedType.NASHI] = Math.min(100, pet.needs[NeedType.NASHI] + 0.05);
+                // Boost ALL mapped needs (not just the primary one)
+                const allNeeds = cfg.needs || [cfg.need];
+                const bonus = (cfg.tickBonus || 0.2) / Math.max(1, allNeeds.length * 0.6);
+                for (const n of allNeeds) {
+                    pet.needs[n] = Math.min(100, pet.needs[n] + bonus);
+                }
                 // Decay uses slowly (1 use per 60 real seconds)
                 if (!target.lastUseAt) target.lastUseAt = now();
                 if (now() - target.lastUseAt > 60 * 1000) {
