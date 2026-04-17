@@ -97,9 +97,28 @@ export const SystemPrompt = {
         prompt += `rest=${Math.round(n[NeedType.MOKO])}/100, `;
         prompt += `happiness=${Math.round(n[NeedType.NASHI])}/100, `;
         prompt += `health=${Math.round(n[NeedType.HEALTH])}/100, `;
-        prompt += `bond with keeper=${Math.round(n[NeedType.AFFECTION])}/100. `;
+        prompt += `hygiene=${Math.round(n[NeedType.MISKA])}/100, `;
+        prompt += `mind=${Math.round(n[NeedType.COGNITION])}/100, `;
+        prompt += `affection=${Math.round(n[NeedType.AFFECTION])}/100, `;
+        prompt += `curiosity=${Math.round(n[NeedType.CURIOSITY])}/100, `;
+        prompt += `security=${Math.round(n[NeedType.SECURITY])}/100. `;
         prompt += `You are feeling ${Pet.getMood()}. `;
-        prompt += `You have lived ${Pet.getAgeDays()} days.\n\n`;
+        prompt += `You have lived ${Pet.getAgeDays()} days.\n`;
+
+        // Highlight critical needs so the pet MENTIONS them when asked how it's doing
+        const critical = [];
+        if (n[NeedType.KORA] < 40)      critical.push('very hungry');
+        if (n[NeedType.MOKO] < 40)      critical.push('very sleepy/tired');
+        if (n[NeedType.MISKA] < 40)     critical.push('feeling dirty');
+        if (n[NeedType.NASHI] < 40)     critical.push('sad/bored');
+        if (n[NeedType.HEALTH] < 40)    critical.push('feeling unwell');
+        if (n[NeedType.AFFECTION] < 40) critical.push('lonely, craving affection');
+        if (n[NeedType.CURIOSITY] < 40) critical.push('bored, wanting novelty');
+        if (n[NeedType.SECURITY] < 40)  critical.push('anxious, insecure');
+        if (critical.length) {
+            prompt += `IMPORTANT: You are currently ${critical.join(', ')}. When the keeper asks how you are, you MUST mention these feelings — don't just say "happy" if you're suffering. Be honest about your state.\n`;
+        }
+        prompt += '\n';
 
         // [RECENT_MEMORY]
         prompt += `[RECENT_MEMORY]\n`;
