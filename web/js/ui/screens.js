@@ -537,17 +537,36 @@ export const Screens = {
 
             <section>
                 <h3>🧠 La mente del Lalìen</h3>
-                <p>Dallo <b>stadio 2 in poi</b>, il tuo Lalìen ha una <b>mente guidata dall'AI</b>: periodicamente decide da solo cosa fare osservando il suo stato (bisogni, ora del giorno, oggetti presenti, memorie recenti). Non è solo un automa: ragiona, preferisce, si annoia, ti richiede cose specifiche.</p>
-                <p><b>Intelligenza progressiva per stadio:</b></p>
+                <p>Il tuo Lalìen ha una <b>mente propria guidata dall'AI</b>. Non reagisce soltanto: <b>pensa, osserva, fa domande, si ricorda, forma opinioni</b>. È ispirato ai migliori virtual pet della storia (Seaman, Creatures) ma con tecnologia moderna.</p>
+
+                <p><b>Cosa fa autonomamente:</b></p>
                 <ul>
-                    <li>Stadio 2: pensa ogni 15 min, 3 parole aliene max</li>
-                    <li>Stadio 3: ogni 12 min, 5 parole, desideri semplici</li>
-                    <li>Stadio 4: ogni 10 min, preferenze + richieste</li>
-                    <li>Stadio 5: ogni 8 min, riflessioni sfumate</li>
-                    <li>Stadio 6: ogni 6 min, osservazioni sagge</li>
-                    <li>Stadio 7: ogni 4 min, poesia frammentaria</li>
+                    <li>💬 <b>Ti fa domande</b> sulla tua vita, le tue emozioni, il mondo — "Come ti chiami?", "Hai dormito bene?", "Cosa ti rende felice?"</li>
+                    <li>🗣️ <b>Commenta</b> ciò che osserva — l'ora del giorno, come si sente, i ricordi recenti, il tuo comportamento</li>
+                    <li>🧠 <b>Ricorda</b> le interazioni passate e le cita — "ieri hai detto...", "mi hai nutrito prima, grazie"</li>
+                    <li>🌌 <b>Sogna di Echòa</b> — condivide frammenti della civiltà perduta, ricordi cosmici</li>
+                    <li>🎯 <b>Chiede ciò che vuole</b> — cibo, gioco, coccole, sonno — in base ai suoi bisogni reali</li>
+                    <li>🚶 <b>Si muove verso gli oggetti</b> che lo interessano, cammina, esplora</li>
+                    <li>💤 <b>Decide di dormire</b> se è stanco, o di <b>meditare</b> se è anziano</li>
                 </ul>
-                <p class="manual-note">Richiede una chiave API Claude o GPT. Disattivabile da <b>Impostazioni → Mente AI autonoma</b>. Quando è disattiva il pet torna a reazioni istintive base (comunque varie).</p>
+
+                <p><b>Personalità dal DNA:</b> tratti come curioso/calmo/ansioso/giocoso/affettuoso influenzano le sue scelte. Un Lalìen curioso farà più domande; uno calmo farà più osservazioni; uno ansioso chiederà più spesso rassicurazioni.</p>
+
+                <p><b>Intelligenza per stadio:</b></p>
+                <ul>
+                    <li>Stadio 0: nessun pensiero (uovo)</li>
+                    <li>Stadio 1: istinto puro, ogni 10 min, 1-2 suoni</li>
+                    <li>Stadio 2: ogni 6 min, frasi aliene brevi, curiosità basilare</li>
+                    <li>Stadio 3: ogni 5 min, domande semplici, desideri</li>
+                    <li>Stadio 4: ogni 4 min, opinioni, preferenze forti</li>
+                    <li>Stadio 5: ogni 3 min, riflessioni sfumate, nota cose del custode</li>
+                    <li>Stadio 6: ogni 2.5 min, saggezza, domande esistenziali</li>
+                    <li>Stadio 7: ogni 2 min, poesia frammentaria, addio cosmico</li>
+                </ul>
+
+                <p><b>Linguaggio misto:</b> agli stadi bassi parla solo in lalìen; crescendo mescola sempre più la lingua del custode. Allo stadio 5+ è quasi fluente con accento alieno.</p>
+
+                <p class="manual-note">Ogni pensiero viene salvato nel <b>diario</b> in italiano. Puoi rileggere i suoi ragionamenti, i suoi sogni di Echòa, le sue opinioni su di te. Richiede chiave API. Disattivabile da <b>Impostazioni → Mente AI autonoma</b>.</p>
             </section>
 
             <section>
