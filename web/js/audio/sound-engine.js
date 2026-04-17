@@ -1637,29 +1637,29 @@ function stageAmbientSpec(stage) {
     const s = clamp(stage | 0, 0, 7);
     // Stage-specific tunings/palettes
     const specs = [
-        // 0 Syrma — womb: very low chord + heartbeat + distant choir hints
-        { freqs: [55, 82.5, 110], cutoff: 320, detune: 4, peak: 0.08, lfoRate: 0.05, filterLfo: 0.04,
+        // 0 Syrma — womb: deep heartbeat + distant choir whispers + warm sub
+        { freqs: [55, 82.5, 110], cutoff: 380, detune: 5, peak: 0.18, lfoRate: 0.04, filterLfo: 0.05,
           wombPulse: true, distantChoir: true, tag: 'womb' },
-        // 1 Lali-na — gentle cradle bells over soft pad
-        { freqs: [65.4, 98.0, 130.8], cutoff: 440, detune: 5, peak: 0.075, lfoRate: 0.06, filterLfo: 0.05,
+        // 1 Lali-na — tender cradle bells + soft breathing pad
+        { freqs: [65.4, 98.0, 130.8], cutoff: 500, detune: 6, peak: 0.16, lfoRate: 0.05, filterLfo: 0.06,
           cradleBells: true, tag: 'cradle' },
-        // 2 Lali-shi — light wind chimes, airier
-        { freqs: [73.4, 110, 146.8], cutoff: 580, detune: 6, peak: 0.07, lfoRate: 0.07, filterLfo: 0.06,
+        // 2 Lali-shi — sparkling wind chimes + airy texture
+        { freqs: [73.4, 110, 146.8], cutoff: 650, detune: 7, peak: 0.15, lfoRate: 0.06, filterLfo: 0.07,
           windChimes: true, tag: 'chimes' },
-        // 3 Lali-ko — playful pentatonic plucks
-        { freqs: [82.4, 123.5, 164.8], cutoff: 720, detune: 7, peak: 0.07, lfoRate: 0.08, filterLfo: 0.07,
+        // 3 Lali-ko — bouncy pentatonic plucks + warm hum
+        { freqs: [82.4, 123.5, 164.8], cutoff: 800, detune: 8, peak: 0.15, lfoRate: 0.07, filterLfo: 0.08,
           pentaPluck: true, tag: 'play' },
-        // 4 Lali-ren — warm pad with subtle rhythm
-        { freqs: [98, 147, 196], cutoff: 860, detune: 8, peak: 0.07, lfoRate: 0.09, filterLfo: 0.08,
+        // 4 Lali-ren — expansive warm pad with gentle pulse
+        { freqs: [98, 147, 196], cutoff: 950, detune: 9, peak: 0.16, lfoRate: 0.08, filterLfo: 0.09,
           softPulse: true, tag: 'warm' },
-        // 5 Lali-vox — full cosmic pad with choir hints
-        { freqs: [110, 164.8, 220], cutoff: 1000, detune: 9, peak: 0.075, lfoRate: 0.1, filterLfo: 0.09,
+        // 5 Lali-vox — rich cosmic pad with choir shimmer
+        { freqs: [110, 164.8, 220], cutoff: 1100, detune: 10, peak: 0.17, lfoRate: 0.09, filterLfo: 0.10,
           choirHint: true, tag: 'cosmic' },
-        // 6 Lali-mere — deep low drone + meditation bowl
-        { freqs: [73.4, 110, 146.8, 293.7], cutoff: 600, detune: 5, peak: 0.08, lfoRate: 0.04, filterLfo: 0.03,
+        // 6 Lali-mere — resonant deep drone + singing bowl
+        { freqs: [73.4, 110, 146.8, 293.7], cutoff: 700, detune: 6, peak: 0.18, lfoRate: 0.035, filterLfo: 0.04,
           bowl: true, tag: 'bowl' },
-        // 7 Lali-thishi — ethereal reverb-drenched chords
-        { freqs: [130.8, 196, 261.6], cutoff: 1400, detune: 10, peak: 0.07, lfoRate: 0.12, filterLfo: 0.1,
+        // 7 Lali-thishi — transcendent ethereal chords, wide reverb
+        { freqs: [130.8, 196, 261.6, 392], cutoff: 1600, detune: 12, peak: 0.16, lfoRate: 0.10, filterLfo: 0.12,
           choir: true, tag: 'ether' },
     ];
     const sp = specs[s];

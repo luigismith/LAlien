@@ -65,11 +65,34 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 function speak(text, mood) {
     if (localStorage.getItem('lalien_tts_enabled') === '0') return;
+    const stage = (typeof Pet !== 'undefined' && Pet.getStage) ? Pet.getStage() : 0;
+
+    // Stages 0-2: the pet hasn't learned to speak the keeper's language yet.
+    // Instead of TTS, emit a sequence of alien chirps/syllables that SOUND like
+    // the text but aren't intelligible. The mood chirp already fired before this.
+    // Add 2-3 extra voiced syllables for a "babbling" effect.
+    if (stage <= 2) {
+        try {
+            const { SoundEngine } = window._speechSoundRef || {};
+            if (SoundEngine && SoundEngine.playMoodChirp) {
+                // Babble: emit 2-4 chirps with slight delays (simulates alien speech)
+                const count = Math.min(4, Math.max(2, Math.ceil(text.length / 8)));
+                const moods = ['neutral','curious','happy','neutral','sad'];
+                for (let i = 0; i < count; i++) {
+                    setTimeout(() => {
+                        try { SoundEngine.playMoodChirp(stage, moods[(i + text.charCodeAt(0)) % moods.length]); } catch (_) {}
+                    }, i * 280);
+                }
+            }
+        } catch (_) {}
+        return;  // NO TTS at stages 0-2
+    }
+
+    // Stages 3+: real TTS — the pet is learning/speaking the keeper's language
     if (!('speechSynthesis' in window)) return;
     try {
         speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
-        const stage = (typeof Pet !== 'undefined' && Pet.getStage) ? Pet.getStage() : 2;
         const voice = pickAlienVoice(stage);
         if (voice) { u.voice = voice; u.lang = voice.lang; }
         const base = STAGE_VOICE[stage] || STAGE_VOICE[2];
@@ -86,6 +109,8 @@ if ('speechSynthesis' in window) {
     speechSynthesis.addEventListener?.('voiceschanged', () => { /* voices ready */ });
     setTimeout(() => speechSynthesis.getVoices(), 500);
 }
+// Lazy-load SoundEngine ref (avoids circular import)
+import('../audio/sound-engine.js').then(m => { window._speechSoundRef = m; }).catch(() => {});
 
 export const SpeechBubble = {
     show(text, mood = 'neutral', duration = 3000) {
