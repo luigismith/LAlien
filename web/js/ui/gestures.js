@@ -125,14 +125,15 @@ function attachDraggable(btn) {
         if (active) {
             const p = pointer(e);
             const onTarget = isOverPetZone(p.clientX, p.clientY);
-            // Detect drop on the canvas but NOT on the pet → spawn an item
+            // Hotbar slots → ONLY spawn items on floor (never direct action on pet)
+            // Chips/buttons → ONLY direct action on pet (never spawn items)
             const canvas = document.getElementById('game-canvas');
             let onFloor = false;
-            if (canvas && !onTarget) {
+            if (isHotbarSlot && canvas) {
+                // Hotbar: any drop on the canvas = spawn item on floor
                 const r = canvas.getBoundingClientRect();
                 if (p.clientX >= r.left && p.clientX <= r.right && p.clientY >= r.top && p.clientY <= r.bottom) {
                     onFloor = true;
-                    // Translate client coords → virtual canvas space
                     const vx = (p.clientX - r.left) * (canvas.width / r.width);
                     const vy = (p.clientY - r.top) * (canvas.height / r.height);
                     import('../engine/items.js').then(m => {
@@ -153,7 +154,8 @@ function attachDraggable(btn) {
             btn.classList.remove('dragging-source');
             active = false;
             suppressClick = true;
-            if (onTarget) {
+            if (!isHotbarSlot && onTarget) {
+                // Chips/buttons: direct action on pet
                 if (navigator.vibrate) navigator.vibrate([8, 18, 10]);
                 Events.emit('gesture-action', { action });
             } else if (onFloor) {

@@ -469,19 +469,23 @@ export const Screens = {
 
             <section>
                 <h3>🎮 I controlli</h3>
-                <p><b>Barra alta (chips):</b> ogni chip è un bisogno <i>e</i> un'azione.</p>
+                <p><b>Barra alta (chips) = INTERAGISCI col pet:</b></p>
                 <ul>
-                    <li><b>Tap breve</b> su un chip → apre una scheda con stato % + consiglio + pulsante CTA</li>
-                    <li><b>Long-press</b> (0.6s) → esegue subito l'azione mappata</li>
+                    <li><b>Tap breve</b> su un chip → scheda con stato %, consiglio e pulsante azione</li>
+                    <li><b>Long-press</b> (0.6s) → esegue subito l'azione</li>
                     <li><b>Drag del chip SUL pet</b> → esegue l'azione via gesto</li>
-                    <li><b>Drag del chip SUL pavimento</b> → <b>lascia un oggetto</b> nella scena</li>
+                </ul>
+                <p><b>Barra bassa (hotbar) = LASCIA oggetti sul pavimento:</b></p>
+                <ul>
+                    <li><b>Trascina</b> un'icona dalla hotbar e <b>rilascia sul pavimento</b> → l'oggetto appare nella scena</li>
+                    <li>Il pet ci camminerà e lo userà da solo (anche mentre dormi!)</li>
+                    <li>Tappare la hotbar non fa nulla — solo drag funziona</li>
                 </ul>
                 <p><b>Sul pet direttamente:</b></p>
                 <ul>
                     <li><b>Tap</b> → poke (sorpresa)</li>
-                    <li><b>Striscia ripetuta</b> multi-direzionale → carezza (cuori che salgono)</li>
-                    <li><b>Scrub circolare</b> attorno → pulizia (bollicine)</li>
-                    <li><b>Long-press 0.6s</b> → apre overlay bisogni dettagliato</li>
+                    <li><b>Striscia ripetuta</b> → carezza (cuori)</li>
+                    <li><b>Scrub circolare</b> → pulizia (bollicine)</li>
                 </ul>
                 <p><b>Gesti del dispositivo:</b></p>
                 <ul>
