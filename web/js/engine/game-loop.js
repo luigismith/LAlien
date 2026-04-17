@@ -336,7 +336,7 @@ function bindActions() {
     });
 
     // Needs overlay
-    document.getElementById('btn-needs-expand').addEventListener('click', () => {
+    document.getElementById('btn-needs-expand')?.addEventListener('click', () => {
         StatusBar.toggleNeedsOverlay();
     });
     document.querySelector('[data-close="needs-overlay"]')?.addEventListener('click', () => {

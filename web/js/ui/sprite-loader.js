@@ -138,12 +138,13 @@ export const SpriteLoader = {
         if (!active.loaded && anim !== 'idle') {
             active = loadAnim(pet.stage, variant, 'idle');
         }
-        if (!active.loaded || active.failed || !active.meta) {
-            // Still loading or missing — fall back to procedural (return false)
+        if (!active.loaded || active.failed) {
+            // Image still loading or missing — fall back to procedural
             return false;
         }
 
-        const meta = active.meta;
+        // Default meta fallback if JSON hasn't loaded yet (race condition on first frames)
+        const meta = active.meta || { frames: 4, fps: 4, frame_width: 64, frame_height: 64 };
         const frames = meta.frames || 1;
         const fps = meta.fps || 4;
         const fw = meta.frame_width || 64;
