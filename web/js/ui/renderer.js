@@ -143,7 +143,7 @@ function drawBackground(ctx, w, h, tick, pet) {
 
     // Subtle hue tint overlay from pet's DNA color
     ctx.save();
-    ctx.globalAlpha = tintAlpha;
+    ctx.globalAlpha = 0.04;
     const tintG = ctx.createRadialGradient(w * 0.5, h * 0.4, 0, w * 0.5, h * 0.4, w * 0.7);
     tintG.addColorStop(0, `hsl(${petHue},60%,40%)`);
     tintG.addColorStop(1, 'transparent');
@@ -775,16 +775,15 @@ function drawCreature(ctx, pet, cx, cy, tick) {
     if (act === 'SICK') ctx.filter = 'saturate(0.55) brightness(0.92)';
     else if (act === 'SULKY') ctx.filter = 'saturate(0.75) brightness(0.85)';
 
-    // Try the pixel-art sprite first
-    const drawn = SpriteLoader.draw(ctx, pet, cx, cy, 1);
+    // Try the pixel-art sprite first; fall back to procedural if not ready
+    let drawn = false;
+    try { drawn = SpriteLoader.draw(ctx, pet, cx, cy, 1); } catch (_) {}
     if (!drawn) {
-        // Fallback: procedural rendering while sprites are loading
-        _drawCreatureBody(pet, ctx, cx, cy, tick);
-    } else {
-        // Keep Interactions hit area in sync with the sprite footprint
-        const sz = SpriteLoader.getBodySize(pet, 1);
-        Interactions.setPetPosition(cx, cy, sz.w * 0.45);
+        try { _drawCreatureBody(pet, ctx, cx, cy, tick); } catch (e) { console.error('[DRAW]', e); }
     }
+    // Sync hit area
+    const sz = drawn ? SpriteLoader.getBodySize(pet, 1) : { w: bodyW * 2 };
+    try { Interactions.setPetPosition(cx, cy, (sz.w || 50) * 0.45); } catch (_) {}
     ctx.restore();
 
     // Draw needs banner above the pet (overlay)
@@ -1464,13 +1463,26 @@ export const Renderer = {
         const liveCx = cx + (mo.offsetX || 0) + shake.x;
         const liveCy = baseCy + (mo.offsetY || 0) + (mo.bob || 0) + shake.y;
 
-        // Draw pet
-        if (!pet.isAlive()) {
-            drawDeathSequence(_ctx, pet, liveCx, liveCy, _tick);
-        } else if (pet.isEgg()) {
-            drawEgg(_ctx, liveCx, liveCy, _tick, pet);
-        } else {
-            drawCreature(_ctx, pet, liveCx, liveCy, _tick);
+        // Draw pet (with emergency fallback — a visible circle if everything fails)
+        try {
+            if (!pet.isAlive()) {
+                drawDeathSequence(_ctx, pet, liveCx, liveCy, _tick);
+            } else if (pet.isEgg()) {
+                drawEgg(_ctx, liveCx, liveCy, _tick, pet);
+            } else {
+                drawCreature(_ctx, pet, liveCx, liveCy, _tick);
+            }
+        } catch (renderErr) {
+            console.error('[RENDER PET]', renderErr);
+            // Emergency: draw a visible gold circle so the user knows something is there
+            _ctx.fillStyle = '#D4A534';
+            _ctx.beginPath();
+            _ctx.arc(liveCx, liveCy, 40, 0, Math.PI * 2);
+            _ctx.fill();
+            _ctx.fillStyle = '#FFFFFF';
+            _ctx.font = '12px sans-serif';
+            _ctx.textAlign = 'center';
+            _ctx.fillText('render error', liveCx, liveCy + 50);
         }
 
         // Activity overlays (Zzz while sleeping, food particles while eating, etc.)
