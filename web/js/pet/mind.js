@@ -184,12 +184,23 @@ function systemForStage(stage) {
 
 function parseThought(text) {
     if (!text) return null;
-    // Extract JSON from raw LLM output (sometimes wrapped in ```json...```)
     const m = text.match(/\{[\s\S]*\}/);
     if (!m) return null;
     try {
         const o = JSON.parse(m[0]);
         if (typeof o !== 'object') return null;
+        // Normalize unknown actions to known ones
+        const VALID = new Set(['idle','speak','wander','walk_to_item','request','nap','meditate','dream_of_echoa','ask_keeper','comment']);
+        if (o.action && !VALID.has(o.action)) {
+            // Map common LLM inventions to closest valid action
+            if (/share|dream|echoa|memory|remember/i.test(o.action)) o.action = 'dream_of_echoa';
+            else if (/ask|question/i.test(o.action)) o.action = 'ask_keeper';
+            else if (/talk|say|speak|sing/i.test(o.action)) o.action = 'speak';
+            else if (/walk|move|go/i.test(o.action)) o.action = 'wander';
+            else if (/sleep|rest|nap/i.test(o.action)) o.action = 'nap';
+            else if (/eat|feed|food/i.test(o.action)) o.action = 'request';
+            else o.action = o.utterance ? 'speak' : 'idle';
+        }
         return o;
     } catch (_) { return null; }
 }
@@ -228,6 +239,13 @@ async function tickOnce() {
 
 function executeThought(t) {
     const mood = t.mood || 'neutral';
+
+    // Sanitize utterance: NEVER show raw JSON to the user
+    if (t.utterance && (t.utterance.includes('{') || t.utterance.includes('"action"'))) {
+        // LLM leaked JSON into utterance — extract just the text part
+        t.utterance = t.utterance.replace(/[{}"]/g, '').replace(/action:.*?,/g, '').replace(/\w+:/g, '').trim();
+        if (t.utterance.length < 2) t.utterance = null;
+    }
 
     // Log internal thought to diary (rich inner life visible in the diary screen)
     if (t.thought && t.thought.length > 2) {
