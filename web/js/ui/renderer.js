@@ -13,6 +13,10 @@ import { Autonomy } from '../pet/autonomy.js';
 import { SpriteLoader } from './sprite-loader.js';
 import { Items } from '../engine/items.js';
 import { EmotiveEffects } from './emotive-effects.js';
+import { Environment } from '../engine/environment.js';
+import { Weather } from '../engine/weather.js';
+import { Shelter } from './shelter.js';
+import { WeatherOverlay } from './weather-overlay.js';
 
 let _canvas, _ctx;
 let _scaleX = 1, _scaleY = 1;
@@ -86,17 +90,13 @@ let _lastShootingStarTick = 0;
 function drawBackground(ctx, w, h, tick, pet) {
     const petHue = (pet && pet.dna) ? pet.dna.coreHue : 200;
     const stage = pet ? pet.stage : 0;
-    const hour = new Date().getHours();
 
-    // Day/night brightness: 0 (midnight) to 1 (noon)
-    // 6am=0.3, 8am=0.7, noon=1, 6pm=0.6, 9pm=0.2, midnight=0
-    const dayLight = Math.max(0, Math.min(1,
-        hour >= 6 && hour < 12  ? (hour - 6) / 6 :
-        hour >= 12 && hour < 18 ? 1 - (hour - 12) / 12 :
-        hour >= 18 && hour < 22 ? 0.5 - (hour - 18) / 8 :
-        0.05
-    ));
-    const nightDim = 1 - dayLight * 0.5;  // 0.5 at noon (brighter), 1.0 at midnight (full dark)
+    // Real day/night based on keeper's location (falls back to simple curve)
+    const now = new Date();
+    const dayLight = Environment.getDayLight(now);
+    const phase    = Environment.getPhase(now);
+    const starVis  = Environment.getStarVisibility(now);
+    const nightDim = 1 - dayLight * 0.5;
 
     // Stage-specific sky palette (each stage has a unique cosmic atmosphere)
     const SKY_PALETTES = [
@@ -138,6 +138,27 @@ function drawBackground(ctx, w, h, tick, pet) {
         warmGrad.addColorStop(1, 'transparent');
         ctx.fillStyle = warmGrad;
         ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+    }
+
+    // Dawn / dusk horizon blaze — vivid orange-pink strip where the sun is
+    if (phase === 'dawn' || phase === 'dusk') {
+        ctx.save();
+        const sunX = phase === 'dawn' ? w * 0.15 : w * 0.85;
+        const blaze = ctx.createRadialGradient(sunX, h * 0.72, 8, sunX, h * 0.72, w * 0.55);
+        blaze.addColorStop(0,   'rgba(255,200,120,0.75)');
+        blaze.addColorStop(0.3, 'rgba(230,120,90,0.45)');
+        blaze.addColorStop(0.7, 'rgba(120,60,120,0.22)');
+        blaze.addColorStop(1,   'transparent');
+        ctx.fillStyle = blaze;
+        ctx.fillRect(0, 0, w, h);
+        // A faint sun disc
+        ctx.globalAlpha = 0.65;
+        const sunG = ctx.createRadialGradient(sunX, h * 0.72, 2, sunX, h * 0.72, 28);
+        sunG.addColorStop(0, '#FFE8A8');
+        sunG.addColorStop(1, 'transparent');
+        ctx.fillStyle = sunG;
+        ctx.fillRect(sunX - 32, h * 0.72 - 32, 64, 64);
         ctx.restore();
     }
 
@@ -188,11 +209,11 @@ function drawBackground(ctx, w, h, tick, pet) {
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
 
-    // Stars
+    // Stars (hidden during day, faded at dawn/dusk)
     if (!_stars) initStars(w, h);
-    for (const s of _stars) {
+    if (starVis > 0.03) for (const s of _stars) {
         const twinkle = Math.sin(tick * 0.008 * s.speed + s.phase);
-        const brightness = 0.35 + twinkle * 0.4;
+        const brightness = (0.35 + twinkle * 0.4) * starVis;
         if (brightness < 0.05) continue;
 
         ctx.save();
@@ -408,6 +429,32 @@ function drawBackground(ctx, w, h, tick, pet) {
         ctx.fillRect(Math.floor(fx), Math.floor(fy), 2, 2);
     }
     ctx.restore();
+
+    // Environmental grime when the pet has been dirty for a while —
+    // dark patches on the ground + floating dust motes around the canvas.
+    if (pet && pet.needs && pet.needs[2 /* MISKA */] < 45) {
+        const dirt = 1 - pet.needs[2] / 45;
+        ctx.save();
+        // Dark smudges scattered on the ground
+        for (let i = 0; i < 14; i++) {
+            const dx = ((i * 97 + petHue) % w);
+            const dy = groundY + 2 + (i % 4) * 3;
+            ctx.globalAlpha = 0.25 * dirt;
+            ctx.fillStyle = '#2A2014';
+            ctx.beginPath();
+            ctx.ellipse(dx, dy, 6 + (i % 3) * 3, 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Floating dust motes drifting upward
+        for (let i = 0; i < Math.round(6 + dirt * 12); i++) {
+            const dx = ((i * 41 + tick * 0.02) % w);
+            const dy = groundY - ((tick * 0.4 + i * 31) % (groundY * 0.45));
+            ctx.globalAlpha = 0.15 + dirt * 0.25;
+            ctx.fillStyle = '#7A6B48';
+            ctx.fillRect(Math.floor(dx), Math.floor(dy), 2, 2);
+        }
+        ctx.restore();
+    }
 
     // Aurora borealis bands (undulating translucent ribbons, stage 4+ only)
     if (stage >= 4) {
@@ -829,6 +876,184 @@ function drawEgg(ctx, cx, cy, tick, pet) {
 }
 
 // ---------------------------------------------------------------------------
+// Solo games — small overlays for pet's self-entertainment.
+// ---------------------------------------------------------------------------
+function drawSoloGame(ctx, pet, cx, cy, tick) {
+    const g = pet._soloGame;
+    if (!g) return;
+    const petHue = (pet.dna && pet.dna.coreHue) || 200;
+    const groundY = cy + 50;
+
+    if (g.key === 'chase_firefly') {
+        const fx = cx + (g.data.fireflyX || 0);
+        const fy = cy + (g.data.fireflyY || -60);
+        const blink = 0.55 + Math.sin(tick * 0.25) * 0.4;
+        ctx.save();
+        // Glow
+        ctx.globalAlpha = blink * 0.7;
+        const grad = ctx.createRadialGradient(fx, fy, 0, fx, fy, 14);
+        grad.addColorStop(0, '#FFF1A0');
+        grad.addColorStop(0.4, 'rgba(255,200,120,0.5)');
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.fillRect(fx - 16, fy - 16, 32, 32);
+        // Core
+        ctx.globalAlpha = blink;
+        ctx.fillStyle = '#FFF8C8';
+        ctx.fillRect(Math.floor(fx) - 1, Math.floor(fy) - 1, 3, 3);
+        ctx.restore();
+    } else if (g.key === 'pebble_stack') {
+        const baseX = cx + (g.data.stackX || 0) + 28;
+        ctx.save();
+        for (let i = 0; i < g.data.stones; i++) {
+            const w = 10 - i * 1.4;
+            const py = groundY - 4 - i * 5;
+            ctx.fillStyle = i % 2 === 0 ? '#7A6A50' : '#5C4E38';
+            ctx.fillRect(Math.floor(baseX - w / 2), Math.floor(py), Math.round(w), 4);
+            ctx.fillStyle = '#A89878';
+            ctx.fillRect(Math.floor(baseX - w / 2), Math.floor(py), Math.round(w), 1);
+        }
+        ctx.restore();
+    } else if (g.key === 'shadow_dance') {
+        ctx.save();
+        const pulse = Math.sin(tick * 0.12);
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = `hsla(${petHue},80%,60%,0.35)`;
+        ctx.beginPath();
+        ctx.ellipse(cx, groundY + 4, 30 + pulse * 6, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Swirling sparkles
+        for (let i = 0; i < 6; i++) {
+            const ang = tick * 0.06 + i * Math.PI / 3;
+            const r = 34;
+            const sx = cx + Math.cos(ang) * r;
+            const sy = cy + Math.sin(ang) * r * 0.3;
+            ctx.globalAlpha = 0.7;
+            ctx.fillStyle = `hsl(${(petHue + i * 40) % 360},80%,70%)`;
+            ctx.fillRect(Math.floor(sx), Math.floor(sy), 2, 2);
+        }
+        ctx.restore();
+    } else if (g.key === 'star_gaze') {
+        // A shooting star streaks across the sky above the pet
+        const canvas = document.getElementById('game-canvas');
+        const W = (canvas && canvas.width) || 800;
+        const H = (canvas && canvas.height) || 480;
+        const elapsed = (Date.now() - g.startedAt) / 1000;
+        const t = (elapsed % 10) / 10;
+        const sx = g.data.starX * W + t * 200;
+        const sy = g.data.starY * H + t * 40;
+        ctx.save();
+        ctx.strokeStyle = '#FFE8B0';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - 30, sy - 12);
+        ctx.stroke();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(Math.floor(sx), Math.floor(sy), 2, 2);
+        // Small eye-shine up from pet
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = `hsla(${petHue},80%,75%,0.9)`;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 10);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+        ctx.restore();
+    } else if (g.key === 'bubble_blow') {
+        ctx.save();
+        for (const b of (g.data.bubbles || [])) {
+            ctx.globalAlpha = Math.max(0, b.life * 0.8);
+            ctx.strokeStyle = `hsl(${b.hue},70%,80%)`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(cx + b.x, cy + b.y, b.r, 0, Math.PI * 2);
+            ctx.stroke();
+            // Highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.45)';
+            ctx.fillRect(Math.floor(cx + b.x - b.r * 0.4), Math.floor(cy + b.y - b.r * 0.4), 1, 1);
+        }
+        ctx.restore();
+    } else if (g.key === 'dig_hole') {
+        const hx = cx + (g.data.holeX || 0) + 30;
+        ctx.save();
+        ctx.fillStyle = '#0C0A08';
+        ctx.beginPath();
+        ctx.ellipse(hx, groundY + 4, 6 + g.data.dug, 2 + g.data.dug * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Dirt pile beside it
+        ctx.fillStyle = '#3A2A18';
+        ctx.beginPath();
+        ctx.ellipse(hx + 14, groundY + 2, 4 + g.data.dug * 0.5, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Small label above the pet
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#D4A534';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    const labels = {
+        chase_firefly: '· insegue una lucciola ·',
+        pebble_stack:  '· impila sassolini ·',
+        shadow_dance:  '· balla con l\'ombra ·',
+        star_gaze:     '· osserva le stelle ·',
+        bubble_blow:   '· soffia bolle ·',
+        dig_hole:      '· scava una buca ·',
+    };
+    ctx.fillText(labels[g.key] || '', cx, cy - 70);
+    ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Body dirt — seeded pixel stains that grow as MISKA drops.
+// ---------------------------------------------------------------------------
+function _drawBodyDirt(ctx, pet, cx, cy, bodyW, bodyH, tick) {
+    const miska = pet.needs ? pet.needs[2 /* MISKA */] : 100;
+    if (miska >= 55) return;
+    const severity = 1 - miska / 55;  // 0..1
+    const stainCount = Math.round(3 + severity * 9);
+    // Stable seed from pet DNA so stains don't jitter between frames
+    const seed = (pet.dna?.coreHue ?? 200) * 13 + (pet.stage || 0) * 7;
+    ctx.save();
+    const halfW = bodyW * 0.45;
+    const halfH = bodyH * 0.75;
+    for (let i = 0; i < stainCount; i++) {
+        const r1 = ((seed + i * 131) % 1000) / 1000;
+        const r2 = ((seed + i * 271) % 1000) / 1000;
+        const r3 = ((seed + i * 59)  % 1000) / 1000;
+        const dx = (r1 - 0.5) * halfW * 1.6;
+        const dy = (r2 - 0.4) * halfH * 1.3;
+        const size = 2 + Math.round(r3 * 3) + (severity > 0.7 ? 1 : 0);
+        // Darkest when very dirty, with a slight green-brown bias
+        ctx.globalAlpha = 0.4 + severity * 0.4;
+        ctx.fillStyle = severity > 0.65 ? '#2F2410' : '#4A3A20';
+        // Blocky pixel clump
+        ctx.fillRect(Math.floor(cx + dx),      Math.floor(cy + dy),      size, size);
+        if (size > 2) {
+            ctx.fillRect(Math.floor(cx + dx + size), Math.floor(cy + dy),      size - 1, size - 1);
+            ctx.fillRect(Math.floor(cx + dx),        Math.floor(cy + dy + size), size - 1, 1);
+        }
+    }
+    // Flies buzz around very dirty pet
+    if (severity > 0.6) {
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#111';
+        for (let i = 0; i < 3; i++) {
+            const ang = tick * 0.06 + i * 2.1;
+            const fx = cx + Math.cos(ang) * (bodyW * 0.6);
+            const fy = cy - bodyH * 0.3 + Math.sin(ang * 1.3) * 14;
+            ctx.fillRect(Math.floor(fx), Math.floor(fy), 2, 1);
+        }
+    }
+    ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
 // Creature
 // ---------------------------------------------------------------------------
 function drawCreature(ctx, pet, cx, cy, tick) {
@@ -887,6 +1112,8 @@ function drawCreature(ctx, pet, cx, cy, tick) {
     // Sync hit area
     const sz = drawn ? SpriteLoader.getBodySize(pet, 1) : { w: bodyW * 2 };
     try { Interactions.setPetPosition(cx, cy, (sz.w || 50) * 0.45); } catch (_) {}
+    // Dirt stains on the body (seeded per pet, stable across frames).
+    _drawBodyDirt(ctx, pet, cx, cy, (sz.w || bodyW * 2), bodyH, tick);
     ctx.restore();
 
     // Draw needs banner above the pet (overlay)
@@ -1550,6 +1777,10 @@ export const Renderer = {
 
         // Keep Items aware of current canvas size (for wander targeting)
         Items.setStage(w, h);
+        Shelter.setStage(w, h);
+
+        // Shelter / cave (drawn before pet so pet can walk "in front of" it)
+        try { Shelter.draw(_ctx, _tick, pet); } catch (e) { console.warn('[shelter]', e); }
 
         // Draw items behind the pet (items on the floor)
         Items.draw(_ctx, _tick);
@@ -1591,6 +1822,7 @@ export const Renderer = {
         // Activity overlays (Zzz while sleeping, food particles while eating, etc.)
         if (pet.isAlive() && !pet.isEgg()) {
             drawActivityOverlay(_ctx, pet, liveCx, liveCy, _tick);
+            drawSoloGame(_ctx, pet, liveCx, liveCy, _tick);
         }
 
         // Desire bubble (autonomous request)
@@ -1604,6 +1836,13 @@ export const Renderer = {
 
         // Emotive pixel-art overlays (particles, thinking, flash)
         EmotiveEffects.draw(_ctx, liveCx, liveCy, _tick);
+
+        // Real-world weather (rain/snow/thunder/mist) — masked by the shelter.
+        try {
+            const sEntry = Shelter.getEntryPoint();
+            const shelterRect = { x: sEntry.x - 70, y: sEntry.y - 90, w: 130, h: 110 };
+            WeatherOverlay.draw(_ctx, w, h, _tick, shelterRect);
+        } catch (e) { /* ignore */ }
 
         // Evolution animation — radial starburst + soft flash + centered title
         if (Evolution.isEvolving()) {

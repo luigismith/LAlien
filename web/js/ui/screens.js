@@ -18,6 +18,8 @@ import { SpeechBubble } from './speech-bubble.js';
 import { Needs, NeedType } from '../pet/needs.js';
 import { Death } from '../pet/death.js';
 import { SoundEngine } from '../audio/sound-engine.js';
+import { Weather } from '../engine/weather.js';
+import { Environment } from '../engine/environment.js';
 
 const SCREEN_IDS = {
     'setup': 'screen-setup',
@@ -786,6 +788,38 @@ export const Screens = {
             }
         });
 
+        // Weather API key save
+        document.getElementById('btn-settings-save-owm')?.addEventListener('click', () => {
+            const key = document.getElementById('settings-owm-key').value.trim();
+            Weather.setApiKey(key);
+            showToast(key ? 'Chiave meteo salvata' : 'Chiave meteo rimossa');
+            this._refreshWeatherStatus();
+        });
+
+        // Locate me
+        document.getElementById('btn-settings-locate')?.addEventListener('click', async () => {
+            const status = document.getElementById('settings-weather-status');
+            if (status) status.textContent = 'Richiedo posizione...';
+            if (!navigator.geolocation) {
+                if (status) status.textContent = 'Geolocalizzazione non supportata.';
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                async pos => {
+                    Environment.setLocation(pos.coords.latitude, pos.coords.longitude);
+                    showToast('Posizione salvata');
+                    if (Weather.hasApiKey()) {
+                        await Weather.requestLocationAndRefresh();
+                    }
+                    this._refreshWeatherStatus();
+                },
+                err => {
+                    if (status) status.textContent = 'Permesso negato o errore: ' + err.message;
+                },
+                { timeout: 8000 }
+            );
+        });
+
         document.getElementById('btn-settings-save-key')?.addEventListener('click', async () => {
             const key = document.getElementById('settings-api-key').value.trim();
             if (key) {
@@ -961,6 +995,11 @@ export const Screens = {
         document.getElementById('settings-provider-select').value = provider;
 
         document.getElementById('settings-time-mult').value = String(GameState.timeMultiplier);
+
+        // Weather status + key echo
+        const owmEl = document.getElementById('settings-owm-key');
+        if (owmEl && Weather.hasApiKey()) owmEl.placeholder = '••• (chiave salvata)';
+        this._refreshWeatherStatus();
 
         // Activity status + reset
         try {
@@ -1170,5 +1209,32 @@ export const Screens = {
             requestAnimationFrame(gameLoop);
         };
         requestAnimationFrame(gameLoop);
+    },
+
+    _refreshWeatherStatus() {
+        const el = document.getElementById('settings-weather-status');
+        if (!el) return;
+        const w = Weather.get();
+        const loc = Environment.getLocation();
+        const lines = [];
+        if (loc) {
+            lines.push(`📍 ${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}`);
+        } else {
+            lines.push('📍 posizione non impostata');
+        }
+        if (!Weather.hasApiKey()) {
+            lines.push('Nessuna chiave API — cielo sereno di default.');
+        } else if (w.source === 'owm') {
+            const ago = Math.round((Date.now() - w.updatedAt) / 60000);
+            lines.push(`${w.condition} · ${Math.round(w.temp)}°C · aggiornato ${ago} min fa`);
+        } else {
+            lines.push('In attesa di aggiornamento…');
+        }
+        const sun = Environment.getSunTimes(new Date());
+        if (sun.sunrise && sun.sunset) {
+            const fmt = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            lines.push(`🌅 ${fmt(sun.sunrise)} · 🌆 ${fmt(sun.sunset)}`);
+        }
+        el.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
     },
 };

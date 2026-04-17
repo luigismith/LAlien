@@ -30,6 +30,9 @@ import { Autonomy } from '../pet/autonomy.js';
 import { Rhythms } from '../pet/rhythms.js';
 import { Items } from './items.js';
 import { Mind } from '../pet/mind.js';
+import { Weather } from './weather.js';
+import { Shelter } from '../ui/shelter.js';
+import { SoloGames } from '../pet/solo-games.js';
 
 // Re-export Events for backward compatibility
 export { Events };
@@ -90,6 +93,15 @@ function logicTick() {
     const wasBuried = Pet.buried;
     Pet.update(GameState.timeMultiplier);
     Items.tick(Pet, 1);
+    // Shelter: if the pet has wandered inside the cave, grant sanctuary bonuses.
+    try {
+        const canvas = document.getElementById('game-canvas');
+        if (canvas && Pet.isAlive && Pet.isAlive()) {
+            const cx = (canvas.width  || 800) / 2 + ((Pet.motion && Pet.motion.offsetX) || 0);
+            const cy = (canvas.height || 480) * 0.82 - 30 - (Pet.stage || 0) * 5;
+            Shelter.tick(Pet, cx, cy, GameState.timeMultiplier);
+        }
+    } catch (_) {}
     StatusBar.update();
     updateActionUrgency();
 
@@ -301,6 +313,12 @@ async function resumeAfterLogin(serverOnline) {
     // LLM-driven inner life — higher cognition scaled with stage
     Mind.init();
 
+    // Real-world weather (if OWM API key is configured)
+    Weather.init();
+
+    // Solo mini-games the pet plays by itself when bored
+    SoloGames.init();
+
     // Inline chat bar — send message from main screen
     const chatInput = document.getElementById('chat-input');
     const chatSend  = document.getElementById('chat-send');
@@ -362,8 +380,17 @@ async function resumeAfterLogin(serverOnline) {
                         response = response.replace(/\{[^}]*\}/g, '').replace(/[{}"]/g, '').trim();
                     }
                 }
-                SpeechBubble.show(response, Pet.getMood(), 5000);
-                Needs.talk(Pet.needs);
+                // While the pet is sleeping, the reply comes from inside the dream —
+                // the pet does NOT wake, and cognition gain is halved.
+                const dreaming = Activity.is(Pet, Activity.Type.SLEEPING);
+                const bubbleMood = dreaming ? 'sleepy' : Pet.getMood();
+                SpeechBubble.show(response, bubbleMood, dreaming ? 7000 : 5000);
+                if (dreaming) {
+                    Pet.needs[NeedType.COGNITION] = Math.min(100, Pet.needs[NeedType.COGNITION] + 1);
+                    Pet.needs[NeedType.AFFECTION] = Math.min(100, Pet.needs[NeedType.AFFECTION] + 0.5);
+                } else {
+                    Needs.talk(Pet.needs);
+                }
                 Pet.addConversation();
                 DiaryGenerator.logMemory('conversation', text.slice(0, 50));
                 await DiaryGenerator.onConversationEnd(response);

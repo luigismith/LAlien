@@ -234,6 +234,16 @@
                 <button class="btn-small" id="btn-settings-save-key">Salva</button>
             </div>
             <div class="settings-group">
+                <label>Meteo reale (OpenWeatherMap)</label>
+                <input type="password" id="settings-owm-key" placeholder="chiave API OpenWeatherMap (opzionale)">
+                <div class="settings-weather-row">
+                    <button class="btn-small" id="btn-settings-save-owm">Salva</button>
+                    <button class="btn-small" id="btn-settings-locate">📍 Usa la mia posizione</button>
+                </div>
+                <div id="settings-weather-status" class="audio-diag-text">—</div>
+                <p class="setup-hint">Fai un account gratuito su <a href="https://openweathermap.org/api" target="_blank" rel="noopener">openweathermap.org</a>. Senza chiave, il cielo resta sereno ma alba/tramonto sono comunque reali se concedi la geolocalizzazione.</p>
+            </div>
+            <div class="settings-group">
                 <label>Time multiplier (debug)</label>
                 <select id="settings-time-mult">
                     <option value="1">1x (real time)</option>

@@ -33,6 +33,11 @@ FILES = [
     (r'D:\LAlien\web\js\ai\sentiment.js',           '/share/Public/lalien/js/ai/sentiment.js'),
     (r'D:\LAlien\web\js\i18n\alien-lexicon.js',     '/share/Public/lalien/js/i18n/alien-lexicon.js'),
     (r'D:\LAlien\web\js\ai\system-prompt.js',       '/share/Public/lalien/js/ai/system-prompt.js'),
+    (r'D:\LAlien\web\js\engine\environment.js',     '/share/Public/lalien/js/engine/environment.js'),
+    (r'D:\LAlien\web\js\engine\weather.js',         '/share/Public/lalien/js/engine/weather.js'),
+    (r'D:\LAlien\web\js\ui\shelter.js',             '/share/Public/lalien/js/ui/shelter.js'),
+    (r'D:\LAlien\web\js\ui\weather-overlay.js',     '/share/Public/lalien/js/ui/weather-overlay.js'),
+    (r'D:\LAlien\web\js\pet\solo-games.js',         '/share/Public/lalien/js/pet/solo-games.js'),
 ]
 
 c = paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())

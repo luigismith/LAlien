@@ -13,6 +13,7 @@ import { Pet } from './pet.js';
 import { NeedType } from './needs.js';
 import { Activity } from './activity.js';
 import { Events } from '../engine/events.js';
+import { Weather } from '../engine/weather.js';
 
 const CHECK_INTERVAL_MS = 6 * 1000;
 // Base gaps (modulated by personality)
@@ -132,15 +133,52 @@ function ensureMotion() {
     }
 }
 
+function wantsShelter() {
+    // AFRAID → always seek shelter; real rain/snow → seek shelter; very tired → nest in cave.
+    const n = Pet.needs;
+    if (Activity.getType(Pet) === 'AFRAID') return true;
+    if (n[NeedType.SECURITY] < 25) return true;
+    try {
+        if (Weather.isRaining() || Weather.isSnowing() || Weather.isThunder()) return true;
+    } catch (_) {}
+    if (n[NeedType.MOKO] < 20) return true;
+    return false;
+}
+
+function shelterOffsetX() {
+    // Canvas right-side; Shelter.entryPoint at ~89% of width. Pet's offsetX is
+    // relative to canvas center, so shelter offset ≈ (0.89 − 0.5) × width.
+    const canvas = document.getElementById('game-canvas');
+    const w = canvas ? canvas.width : 800;
+    return Math.floor(w * 0.39);
+}
+
 function scheduleMove() {
     ensureMotion();
     const m = Pet.motion;
     if (Activity.is(Pet, Activity.Type.SLEEPING)) {
+        // When sleeping in shelter, stay put; otherwise tiny sway
+        if (Pet._inShelter) { m.targetOffsetX = shelterOffsetX(); m.targetOffsetY = 0; return; }
         m.targetOffsetX = (Math.random() - 0.5) * 4;
         m.targetOffsetY = 0;
         m.targetScaleBoost = 0;
         return;
     }
+    // Shelter-seeking overrides normal wandering
+    if (wantsShelter()) {
+        m.targetOffsetX = shelterOffsetX();
+        m.targetOffsetY = 0;
+        m.targetScaleBoost = 0;
+        return;
+    }
+    // While it's sunny and the pet is dirty/bored, sometimes drift left to play
+    try {
+        if (Weather.get().condition === 'clear' && Pet.needs[NeedType.NASHI] < 60 && Math.random() < 0.35) {
+            m.targetOffsetX = -150 + Math.random() * 120;
+            m.targetOffsetY = -2;
+            return;
+        }
+    } catch (_) {}
     const roll = Math.random();
     if (roll < 0.45) {
         // WANDER: walk to a new spot on the ground (up to ±150 px horizontally)

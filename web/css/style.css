@@ -508,6 +508,19 @@ html, body {
     color: var(--text-dim);
     font-family: monospace;
 }
+.settings-weather-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+#settings-weather-status {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: monospace;
+    line-height: 1.5;
+}
 .evo-list {
     list-style: none;
     margin: 0; padding: 0;
