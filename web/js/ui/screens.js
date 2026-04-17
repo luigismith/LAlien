@@ -575,13 +575,15 @@ export const Screens = {
 
             <section>
                 <h3>💬 Chat e voce</h3>
-                <p>Quando parli col pet in chat:</p>
+                <p>La chat è <b>integrata nella schermata principale</b>: la barra di testo è sempre visibile sopra la hotbar. Non devi aprire un menu separato.</p>
                 <ul>
-                    <li>Senti la sua <b>voce TTS</b> con pitch/ritmo scalati per lo stadio (cucciolo=acuto, anziano=profondo)</li>
-                    <li>Le parole si illuminano in stile <b>karaoke</b> mentre lui parla</li>
-                    <li>Il pet <b>ricorda sempre il nome</b> che gli hai dato</li>
-                    <li>Usando parole aliene nel tuo messaggio, <b>tu gliele insegni</b>: il suo lessico cresce bidirezionalmente</li>
+                    <li><b>Scrivi</b> nella barra e premi ➤ — il pet risponde con un fumetto direttamente nella scena</li>
+                    <li><b>Premi 🎤</b> per parlare a voce — il riconoscimento vocale trascrive e invia</li>
+                    <li>Senti la sua <b>voce TTS</b> con pitch scalato per stadio</li>
+                    <li>Le parole si illuminano in stile <b>karaoke</b></li>
+                    <li>Puoi <b>rispondere direttamente</b> quando il pet ti fa una domanda autonoma</li>
                     <li>Il <b>tono</b> che usi (dolce/ostile) influenza NASHI, AFFECTION, SECURITY</li>
+                    <li>Usando parole aliene, <b>gliele insegni</b></li>
                     <li>Parlare stimola COGNITION +25, AFFECTION +5, CURIOSITY +5</li>
                 </ul>
             </section>

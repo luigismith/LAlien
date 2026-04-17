@@ -25,6 +25,7 @@ import { SoundEngine } from '../audio/sound-engine.js';
 import { Gestures } from '../ui/gestures.js';
 import { Notifications } from '../ui/notifications.js';
 import { Activity } from '../pet/activity.js';
+import { Sentiment } from '../ai/sentiment.js';
 import { Autonomy } from '../pet/autonomy.js';
 import { Rhythms } from '../pet/rhythms.js';
 import { Items } from './items.js';
@@ -135,10 +136,13 @@ function handleResize() {
     const statusH = statusBar ? statusBar.offsetHeight : 48;
     const actionBar = document.getElementById('action-bar');
     const actionH = (actionBar && actionBar.offsetParent !== null) ? actionBar.offsetHeight : 0;
-    // Reserve space for the hotbar at the bottom
+    // Reserve space for chat bar + hotbar at the bottom
+    const chatBar = document.getElementById('chat-bar');
+    const chatBarH = (chatBar && chatBar.offsetParent !== null) ? chatBar.offsetHeight : 0;
     const hotbar = document.getElementById('hotbar');
-    const hotbarH = (hotbar && hotbar.offsetParent !== null) ? hotbar.offsetHeight + 20 : 0;
-    const availH = window.innerHeight - statusH - actionH - hotbarH;
+    const hotbarH = (hotbar && hotbar.offsetParent !== null) ? hotbar.offsetHeight : 0;
+    const bottomH = Math.max(chatBarH + hotbarH + 16, 120);
+    const availH = window.innerHeight - statusH - actionH - bottomH;
     const availW = window.innerWidth;
 
     // Fill available space entirely — no fixed aspect ratio
@@ -293,6 +297,74 @@ async function resumeAfterLogin(serverOnline) {
 
     // LLM-driven inner life — higher cognition scaled with stage
     Mind.init();
+
+    // Inline chat bar — send message from main screen
+    const chatInput = document.getElementById('chat-input');
+    const chatSend  = document.getElementById('chat-send');
+    const chatMic   = document.getElementById('chat-mic');
+    const sendInlineChat = async () => {
+        const text = chatInput?.value.trim();
+        if (!text) return;
+        chatInput.value = '';
+        // Show user message as a toast briefly
+        showToast(`Tu: ${text.slice(0, 60)}`, 2500);
+        // Sentiment analysis
+        const sent = Sentiment.analyze(text);
+        if (sent.confidence > 0.15) {
+            const mag = sent.score * sent.confidence;
+            Pet.needs[NeedType.NASHI] = Math.max(0, Math.min(100, Pet.needs[NeedType.NASHI] + mag * 6));
+            Pet.needs[NeedType.AFFECTION] = Math.max(0, Math.min(100, Pet.needs[NeedType.AFFECTION] + mag * 5));
+            if (sent.bucket === 'negative') {
+                Pet.needs[NeedType.SECURITY] = Math.max(0, Pet.needs[NeedType.SECURITY] + mag * 3);
+                if (sent.score < -0.55 && sent.confidence > 0.5 && Activity.getType(Pet) === 'IDLE') {
+                    Activity.start(Pet, Activity.Type.SULKY, { reason: 'harsh-words' });
+                }
+            }
+        }
+        // Vocabulary bidirectional
+        AlienLexicon.discoverFromText(text, 'keeper');
+        // LLM call
+        if (LLMClient.isAvailable && LLMClient.isAvailable()) {
+            try {
+                const prompt = SystemPrompt.build(sent);
+                const response = await LLMClient.chat(prompt, text);
+                SpeechBubble.show(response, Pet.getMood(), 5000);
+                Needs.talk(Pet.needs);
+                Pet.addConversation();
+                DiaryGenerator.logMemory('conversation', text.slice(0, 50));
+                await DiaryGenerator.onConversationEnd(response);
+                Events.emit('pet-changed');
+            } catch (e) {
+                showToast('Errore: ' + e.message, 3000);
+            }
+        } else {
+            SpeechBubble.show('...thi?', Pet.getMood(), 2000);
+        }
+    };
+    chatSend?.addEventListener('click', sendInlineChat);
+    chatInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendInlineChat(); });
+    // Mic button → STT
+    if (chatMic) {
+        let recording = false;
+        chatMic.addEventListener('click', async () => {
+            if (recording) return;
+            recording = true;
+            chatMic.classList.add('recording');
+            try {
+                SoundEngine.playMicOpen && SoundEngine.playMicOpen();
+                const text = await STTClient.listen();
+                SoundEngine.playMicClose && SoundEngine.playMicClose();
+                if (text) {
+                    chatInput.value = text;
+                    sendInlineChat();
+                }
+            } catch (_) {
+                showToast('Microfono non disponibile');
+            }
+            recording = false;
+            chatMic.classList.remove('recording');
+        });
+    }
 
     // Retroactive simulation: if the keeper was away, ask the LLM what
     // the pet did while alone, then show a welcome-back sequence.
