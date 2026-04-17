@@ -310,7 +310,7 @@ function drawBackground(ctx, w, h, tick, pet) {
     }
     ctx.restore();
 
-    // Floating cosmic particles
+    // Floating cosmic particles (sky)
     ctx.save();
     for (let i = 0; i < 18; i++) {
         const px = (i * 53.7 + tick * 0.05 * (0.3 + i * 0.1)) % w;
@@ -324,6 +324,109 @@ function drawBackground(ctx, w, h, tick, pet) {
         ctx.fill();
     }
     ctx.restore();
+
+    // Mood-reactive sky tint: happiness warms, sadness darkens, fear adds purple
+    if (pet && pet.needs && pet.getMood) {
+        const mood = pet.getMood();
+        ctx.save();
+        if (mood === 'happy') {
+            ctx.globalAlpha = 0.06;
+            ctx.fillStyle = '#FFE89940';
+            ctx.fillRect(0, 0, w, h);
+        } else if (mood === 'sad') {
+            ctx.globalAlpha = 0.08;
+            ctx.fillStyle = '#10182040';
+            ctx.fillRect(0, 0, w, h);
+        } else if (mood === 'scared') {
+            ctx.globalAlpha = 0.06;
+            ctx.fillStyle = '#40205040';
+            ctx.fillRect(0, 0, w, h);
+        }
+        ctx.restore();
+    }
+
+    // Crystal growths on the ground (pixel-art alien vegetation that pulses)
+    ctx.save();
+    const crystalSeed = petHue * 7 + 42;
+    for (let i = 0; i < 12; i++) {
+        const cx = ((crystalSeed + i * 73) % w);
+        const baseY = groundY + 2;
+        const h1 = 8 + (i * 13 % 18);
+        const pulse = Math.sin(tick * 0.015 + i * 0.9) * 2;
+        const crystalH = h1 + pulse;
+        const hue = (petHue + i * 30) % 360;
+
+        ctx.globalAlpha = 0.35 + Math.sin(tick * 0.02 + i) * 0.15;
+        ctx.fillStyle = `hsl(${hue},70%,50%)`;
+        // Main spike
+        ctx.beginPath();
+        ctx.moveTo(cx - 2, baseY);
+        ctx.lineTo(cx, baseY - crystalH);
+        ctx.lineTo(cx + 2, baseY);
+        ctx.fill();
+        // Side spike
+        if (i % 3 === 0) {
+            ctx.fillStyle = `hsl(${hue},60%,40%)`;
+            ctx.beginPath();
+            ctx.moveTo(cx + 1, baseY);
+            ctx.lineTo(cx + 4, baseY - crystalH * 0.6);
+            ctx.lineTo(cx + 5, baseY);
+            ctx.fill();
+        }
+        // Glow tip
+        ctx.globalAlpha = 0.4 + Math.sin(tick * 0.03 + i * 1.3) * 0.3;
+        ctx.fillStyle = `hsl(${hue},90%,75%)`;
+        ctx.beginPath();
+        ctx.arc(cx, baseY - crystalH, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    // Fireflies / light sprites near the ground (alive ambient creatures)
+    ctx.save();
+    for (let i = 0; i < 10; i++) {
+        const phase = tick * 0.008 + i * 2.3;
+        const fx = (i * 67 + Math.sin(phase) * 60 + tick * 0.02 * (0.3 + (i % 3) * 0.15)) % w;
+        const fy = groundY - 15 - (i * 11 % 40) + Math.sin(phase * 1.4) * 10;
+        const blink = Math.sin(phase * 3 + i * 1.7);
+        if (blink < -0.2) continue;  // off phase = invisible
+
+        const alpha = Math.max(0, blink * 0.6);
+        const hue = (petHue + 60 + i * 40) % 360;
+
+        // Soft glow
+        ctx.globalAlpha = alpha * 0.4;
+        const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, 8);
+        fg.addColorStop(0, `hsl(${hue},80%,70%)`);
+        fg.addColorStop(1, 'transparent');
+        ctx.fillStyle = fg;
+        ctx.fillRect(fx - 8, fy - 8, 16, 16);
+
+        // Core pixel
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = `hsl(${hue},90%,85%)`;
+        ctx.fillRect(Math.floor(fx), Math.floor(fy), 2, 2);
+    }
+    ctx.restore();
+
+    // Aurora borealis bands (undulating translucent ribbons, stage 4+ only)
+    if (stage >= 4) {
+        ctx.save();
+        const auroraAlpha = 0.04 + Math.sin(tick * 0.002) * 0.02;
+        ctx.globalAlpha = auroraAlpha;
+        for (let band = 0; band < 3; band++) {
+            const baseAY = h * (0.12 + band * 0.08);
+            ctx.strokeStyle = `hsl(${(petHue + band * 80) % 360},80%,60%)`;
+            ctx.lineWidth = 12 - band * 3;
+            ctx.beginPath();
+            for (let x = 0; x <= w; x += 8) {
+                const aY = baseAY + Math.sin(x * 0.005 + tick * 0.003 + band * 1.5) * (20 + band * 8);
+                x === 0 ? ctx.moveTo(x, aY) : ctx.lineTo(x, aY);
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
 
     return groundY;
 }

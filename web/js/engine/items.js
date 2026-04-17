@@ -42,16 +42,25 @@ function ensureTarget() {
         const still = _items.find(i => i.id === _targetItemId);
         if (still) return still;
     }
-    // Pick the closest interesting item matching a low need
     if (!_items.length) { _targetItemId = null; return null; }
-    const weight = (it) => {
+
+    // Only go to an item if the corresponding need is actually LOW (<65).
+    // If all needs are high, the pet ignores items on the floor — no urgency.
+    const candidates = _items.filter(it => {
         const def = ITEM_TYPES[it.action];
-        if (!def) return 0;
+        if (!def) return false;
         const need = Pet.needs[def.need] ?? 100;
-        return 100 - need;
-    };
-    _items.sort((a, b) => weight(b) - weight(a));
-    const t = _items[0];
+        return need < 65;  // only interested if need is below 65%
+    });
+    if (!candidates.length) { _targetItemId = null; return null; }
+
+    // Pick the item matching the LOWEST need (most urgent)
+    candidates.sort((a, b) => {
+        const na = Pet.needs[ITEM_TYPES[a.action]?.need] ?? 100;
+        const nb = Pet.needs[ITEM_TYPES[b.action]?.need] ?? 100;
+        return na - nb;
+    });
+    const t = candidates[0];
     _targetItemId = t ? t.id : null;
     return t;
 }
