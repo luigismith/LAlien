@@ -38,23 +38,17 @@ let _stageHeight = 600;
 function now() { return Date.now(); }
 
 function ensureTarget() {
-    if (_targetItemId) {
-        const still = _items.find(i => i.id === _targetItemId);
-        if (still) return still;
-    }
     if (!_items.length) { _targetItemId = null; return null; }
 
-    // Only go to an item if the corresponding need is actually LOW (<65).
-    // If all needs are high, the pet ignores items on the floor — no urgency.
+    // Always re-evaluate: pick the item matching the MOST URGENT need (<65%)
     const candidates = _items.filter(it => {
         const def = ITEM_TYPES[it.action];
         if (!def) return false;
         const need = Pet.needs[def.need] ?? 100;
-        return need < 65;  // only interested if need is below 65%
+        return need < 65;
     });
     if (!candidates.length) { _targetItemId = null; return null; }
 
-    // Pick the item matching the LOWEST need (most urgent)
     candidates.sort((a, b) => {
         const na = Pet.needs[ITEM_TYPES[a.action]?.need] ?? 100;
         const nb = Pet.needs[ITEM_TYPES[b.action]?.need] ?? 100;
