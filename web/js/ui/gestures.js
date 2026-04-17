@@ -24,13 +24,35 @@ function targetRect() {
 }
 
 function isOverPetZone(x, y) {
+    // Use the actual pet sprite position from Interactions module,
+    // not the whole canvas. This way dropping AWAY from the pet spawns
+    // an item, while dropping ON the pet triggers the direct action.
+    try {
+        const { Interactions } = window._gestureInteractionsRef || {};
+        if (Interactions) {
+            const pos = Interactions.getCursorPos();  // just to confirm module is alive
+            const st = Interactions._getState ? Interactions._getState() : null;
+            if (st) {
+                const canvas = document.getElementById('game-canvas');
+                if (!canvas) return false;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const cx = st.petCx / scaleX + rect.left;
+                const cy = st.petCy / scaleY + rect.top;
+                const r  = (st.petRadius * 2.2) / Math.min(scaleX, scaleY);  // generous but not whole-canvas
+                const dist = Math.hypot(x - cx, y - cy);
+                return dist < r;
+            }
+        }
+    } catch (_) {}
+    // Fallback: small center zone
     const r = targetRect();
     if (!r) return false;
-    // The "pet zone" is the central area of the canvas — some margin around the sprite.
-    const padX = r.width * 0.12;
-    const padY = r.height * 0.12;
-    return x >= r.left + padX && x <= r.right - padX
-        && y >= r.top + padY && y <= r.bottom - padY;
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height * 0.55;
+    const radius = Math.min(r.width, r.height) * 0.18;
+    return Math.hypot(x - cx, y - cy) < radius;
 }
 
 function pointer(e) {
@@ -219,6 +241,10 @@ function initShake() {
 // ---------------------------------------------------------------------------
 export const Gestures = {
     init() {
+        // Store ref to Interactions for pet-zone hit testing
+        import('./interactions.js').then(m => {
+            window._gestureInteractionsRef = m;
+        }).catch(() => {});
         initDragActions();
         initShake();
     }

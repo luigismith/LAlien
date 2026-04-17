@@ -147,7 +147,9 @@ export const Items = {
         const reach = cfg.stayRadius || 30;
         const distToTarget = Math.abs(pet.motion.offsetX - desiredDx);
 
-        if (distToTarget < reach) {
+        // Don't consume on the same tick as spawn — give the pet time to visually walk there
+        const itemAge = now() - target.createdAt;
+        if (distToTarget < reach && itemAge > 2000) {
             if (cfg.mode === 'persistent') {
                 // Continuous bonus while near the toy — keeps the pet entertained
                 pet.needs[cfg.need] = Math.min(100, pet.needs[cfg.need] + (cfg.tickBonus || 0.2));

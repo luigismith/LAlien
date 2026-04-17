@@ -118,6 +118,8 @@ function spawnRipple(x, y) {
 }
 
 export const Interactions = {
+    /** Expose state for pet-zone hit testing from gestures.js */
+    _getState() { return _state; },
     init(canvas) {
         // Mouse events
         canvas.addEventListener('mousedown', (e) => {
