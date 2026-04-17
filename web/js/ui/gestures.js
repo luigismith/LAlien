@@ -162,9 +162,15 @@ function attachDraggable(btn) {
         }
     };
 
-    // Block the tap that fires after a drag
+    // Block taps: for hotbar slots, clicks should NEVER trigger a direct action
+    // (only drag-to-floor or drag-to-pet). For chips/buttons, allow click-through.
+    const isHotbarSlot = btn.classList.contains('hotbar-slot');
     btn.addEventListener('click', (e) => {
-        if (suppressClick) { suppressClick = false; e.preventDefault(); e.stopPropagation(); }
+        if (suppressClick || isHotbarSlot) {
+            suppressClick = false;
+            e.preventDefault();
+            e.stopPropagation();
+        }
     }, true);
 
     btn.addEventListener('touchstart', onDown, { passive: true });
