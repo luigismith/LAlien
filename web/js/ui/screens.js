@@ -639,8 +639,25 @@ export const Screens = {
 
             <section>
                 <h3>⚰ Morte e rinascita</h3>
-                <p>Se trascuri il pet troppo a lungo, muore. Lo ricorderai nel <b>Cimitero dei Ricordi</b>: resterà il suo nome, ultima parola, parole imparate. Da lì puoi piantare un nuovo seme (stesso account) e un nuovo Lalìen nasce con nuovo DNA.</p>
-                <p>Al momento della morte c'è uno <b>sequence visivo</b> dedicato (dissolversi, trascendere, o spegnersi) in base alla causa.</p>
+                <p>Il Lalìen può morire in <b>7 modi diversi</b>. Non muore facilmente: ogni trigger richiede che un bisogno resti a <b>zero assoluto</b> per ore di gioco.</p>
+                <ul>
+                    <li>⭐ <b>Trascendenza</b> — il finale migliore. Stadio 7 + tutti i bisogni ≥80% + AFFECTION ≥90 + COSMIC ≥80 sostenuti per 48h di gioco. Il pet diventa luce e si riunisce al canto di Echòa.</li>
+                    <li>👴 <b>Vecchiaia</b> — morte naturale. Stadio 7 + età ≥ 2500 ore di gioco (~104 giorni).</li>
+                    <li>💀 <b>Fame (Velin)</b> — KORA a 0 per 48h di gioco consecutive.</li>
+                    <li>🤒 <b>Malattia (Zevol)</b> — HEALTH a 0 per 24h di gioco.</li>
+                    <li>😢 <b>Abbandono (Velin)</b> — 3 o più bisogni sotto il 10% per 24h di gioco.</li>
+                    <li>💔 <b>Crepacuore (Morak)</b> — AFFECTION crolla da >80 a <20 in meno di 12h. La morte più subdola: se lo ami e poi lo ferisci.</li>
+                    <li>🌌 <b>Nostalgia (Rena-thishi)</b> — richiamato da Echòa. AFFECTION a 0 senza interazioni per 72h, oppure NASHI + CURIOSITY entrambi a 0 per 48h.</li>
+                </ul>
+                <p><b>Cosa lo protegge:</b></p>
+                <ul>
+                    <li>Il sonno <b>congela tutti i bisogni</b> — non scendono mentre dorme</li>
+                    <li>Gli oggetti sul pavimento (cibo, giocattoli) li usa da solo quando ne ha bisogno</li>
+                    <li>La mente AI ti avvisa quando qualcosa è critico</li>
+                    <li>Se è stanco o annoiato, si mette a dormire da solo</li>
+                    <li>Le notifiche push ti avvisano quando un bisogno è sotto il 20%</li>
+                </ul>
+                <p>Dopo la morte, lo ricorderai nel <b>Cimitero dei Ricordi</b>: nome, ultima parola, parole imparate. Da lì puoi piantare un nuovo seme.</p>
             </section>
 
             <section>
