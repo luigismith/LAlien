@@ -142,7 +142,9 @@ function echoUpdate() {
     }
 }
 
-function echoHandleTouch(x, y) {
+function echoHandleTouch(x, y, dragging) {
+    // ONLY process initial taps, NOT drag movements — prevents double-fire
+    if (dragging) return;
     // Tap-to-retry after a failure
     if (echo.failed && echo.failTimer >= ECHO_RETRY_DELAY) {
         echoInit();
@@ -764,7 +766,7 @@ export const MiniGames = {
     handleTouch(x, y, dragging, vw, vh) {
         if (!_playing) return;
         switch (_currentGame) {
-            case GameType.ECHO_MEMORY: echoHandleTouch(x, y); break;
+            case GameType.ECHO_MEMORY: echoHandleTouch(x, y, dragging); break;
             case GameType.LIGHT_CLEANSING: cleanHandleTouch(x, y, dragging); break;
             case GameType.STAR_JOY: starHandleTouch(x, y); break;
             case GameType.TETRIS_KORA: tetHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
