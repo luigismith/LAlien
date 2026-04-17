@@ -157,15 +157,68 @@ export const SpriteLoader = {
         const targetH = (140 + stage * 22) * baseScale;   // was 60 + stage*12 (too small)
         const targetW = targetH * (fw / fh);
 
+        // Dynamic transforms: squash/stretch, lean, bounce
+        const mo = pet.motion || {};
+        const activity = pet.activity ? pet.activity.type : 'IDLE';
+        const now = performance.now() / 1000;
+
+        // Breathing squash/stretch (subtle body pulse)
+        const breathRate = activity === 'SLEEPING' ? 0.8 : (activity === 'EATING' ? 2.5 : 1.4);
+        const breathAmt = activity === 'SLEEPING' ? 0.04 : 0.025;
+        const breathPhase = Math.sin(now * breathRate);
+        let scaleX = 1 + breathPhase * breathAmt;
+        let scaleY = 1 - breathPhase * breathAmt;
+
+        // Walking lean: tilt when moving horizontally
+        let rotation = 0;
+        const vel = (mo.targetOffsetX || 0) - (mo.offsetX || 0);
+        if (Math.abs(vel) > 2) {
+            rotation = Math.sign(vel) * 0.06;  // lean into movement
+            // Walking bob: alternate feet bounce
+            const walkBob = Math.sin(now * 6) * 2.5;
+            cy += walkBob;
+        }
+
+        // Hop landing squash (when offsetY transitions from negative to zero)
+        if (mo._lastOffY !== undefined && mo._lastOffY < -5 && Math.abs(mo.offsetY || 0) < 2) {
+            mo._squashTimer = 8;  // frames of squash
+        }
+        mo._lastOffY = mo.offsetY || 0;
+        if (mo._squashTimer > 0) {
+            const t = mo._squashTimer / 8;
+            scaleX *= 1 + t * 0.15;   // widen
+            scaleY *= 1 - t * 0.12;   // flatten
+            mo._squashTimer--;
+        }
+
+        // Eating: rhythmic forward bob
+        if (activity === 'EATING') {
+            const eatBob = Math.sin(now * 4) * 3;
+            cx += eatBob;
+            scaleY *= 1 + Math.abs(Math.sin(now * 4)) * 0.03;
+        }
+
+        // Afraid: rapid micro-shiver
+        if (activity === 'AFRAID') {
+            cx += (Math.random() - 0.5) * 3;
+            cy += (Math.random() - 0.5) * 1.5;
+        }
+
+        // Sulky: slight turn away (scale X negative = mirror flip)
+        if (activity === 'SULKY') {
+            scaleX *= -1;  // turned away
+            rotation = -0.04;
+        }
+
         ctx.save();
         ctx.imageSmoothingEnabled = false;
-        // Crispness: floor to integer pixels so upscaling stays blocky
-        const dx = Math.round(cx - targetW / 2);
-        const dy = Math.round(cy - targetH / 2);
+        ctx.translate(Math.round(cx), Math.round(cy));
+        ctx.rotate(rotation);
+        ctx.scale(scaleX, scaleY);
         ctx.drawImage(
             active.img,
             frameIdx * fw, 0, fw, fh,
-            dx, dy,
+            Math.round(-targetW / 2), Math.round(-targetH / 2),
             Math.round(targetW), Math.round(targetH)
         );
         ctx.restore();

@@ -227,7 +227,31 @@ function setThinking(ms = 2000) {
 // Auto-emissions based on pet state (called per frame)
 // ---------------------------------------------------------------------------
 let _autoLastCheck = 0;
+// Walking dust + sparkle trail
+let _lastWalkX = 0;
+function walkEffects(cx, cy, tick) {
+    if (!Pet || !Pet.motion) return;
+    const mo = Pet.motion;
+    const vel = Math.abs((mo.targetOffsetX || 0) - (mo.offsetX || 0));
+    if (vel < 3) { _lastWalkX = mo.offsetX || 0; return; }
+    const moved = Math.abs((mo.offsetX || 0) - _lastWalkX);
+    if (moved < 15) return;
+    _lastWalkX = mo.offsetX || 0;
+    // Dust puffs at pet's feet
+    for (let i = 0; i < 3; i++) {
+        spawn('sparkle', cx + (Math.random() - 0.5) * 20, cy + 40 + Math.random() * 10, {
+            vx: (Math.random() - 0.5) * 0.6,
+            vy: -(0.2 + Math.random() * 0.3),
+            size: 6 + Math.random() * 4,
+            decay: 0.025,
+            color: { light: '#A0907060' },
+            gravity: 0.01,
+        });
+    }
+}
+
 function autoEmit(cx, cy, tick) {
+    walkEffects(cx, cy, tick);
     const now = performance.now();
     if (now - _autoLastCheck < 1200) return;
     _autoLastCheck = now;
