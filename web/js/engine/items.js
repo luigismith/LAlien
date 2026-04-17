@@ -27,6 +27,7 @@ const ITEM_TYPES = {
     meditate:{ icon: '✨', label: 'Cristallo', kind: 'crystal', mode: 'consumable', need: NeedType.COSMIC, uses: 3, lifespanMs: 60*60*1000 },
     ball:   { icon: '🏐', label: 'Palla',     kind: 'ball',  mode: 'persistent', need: NeedType.CURIOSITY, needs: [NeedType.CURIOSITY, NeedType.NASHI], uses: 8, lifespanMs: 20*60*1000, tickBonus: 0.30, stayRadius: 45 },
     puzzle: { icon: '🧩', label: 'Puzzle',    kind: 'puzzle',mode: 'persistent', need: NeedType.COGNITION, needs: [NeedType.COGNITION, NeedType.NASHI, NeedType.CURIOSITY], uses: 10, lifespanMs: 40*60*1000, tickBonus: 0.25, stayRadius: 55 },
+    explore:{ icon: '🔭', label: 'Telescopio', kind: 'scope', mode: 'persistent', need: NeedType.CURIOSITY, needs: [NeedType.CURIOSITY, NeedType.COSMIC], uses: 6, lifespanMs: 30*60*1000, tickBonus: 0.35, stayRadius: 50 },
 };
 
 let _items = [];
