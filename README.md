@@ -122,9 +122,32 @@ Nessun bundler, nessun npm. JS vanilla con moduli ES6 nativi.
 
 ---
 
+## Screenshot
+
+<table>
+<tr>
+<td><img src="docs/screenshots/01-dream-meditazione.png" alt="Dream world reply" width="280"></td>
+<td><img src="docs/screenshots/03-day-home.png" alt="Day scene with cottage" width="280"></td>
+</tr>
+<tr>
+<td align="center"><sub>Risposta dal mondo del sogno</sub></td>
+<td align="center"><sub>Vista diurna con la casetta</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/04-cosmic-dream.png" alt="Cosmic dream narrative" width="280"></td>
+<td><img src="docs/screenshots/05-blue-sky-dream.png" alt="Blue sky dream" width="280"></td>
+</tr>
+<tr>
+<td align="center"><sub>Sogno cosmico sulle storie di Echòa</sub></td>
+<td align="center"><sub>Cielo azzurro e visione onirica</sub></td>
+</tr>
+</table>
+
 ## Come si gioca
 
-Vedi il **Manuale del Custode** integrato nell'app (Impostazioni → Manuale) per la guida completa. In sintesi:
+Guida completa → **[docs/MANUAL.md](docs/MANUAL.md)** (stessa versione integrata nell'app, Impostazioni → Manuale).
+
+In sintesi:
 
 - **Barra alta** (chips): interagisci col pet. Long-press esegue, drag sul pet esegue col gesto.
 - **Hotbar inferiore**: trascina oggetti sul pavimento, il pet li userà da solo.
