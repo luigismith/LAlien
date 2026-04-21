@@ -254,7 +254,12 @@ function doMeditate() {
 }
 
 function doSing() {
-    // Just emit a sing event — the speech bubble handles it; also NASHI boost
+    // Audible melody + bubble
+    try {
+        import('../audio/sound-engine.js').then(m => {
+            m.SoundEngine.playPetMelody(Pet.getStage ? Pet.getStage() : 2, { noteCount: 6, stepMs: 210 });
+        }).catch(() => {});
+    } catch (_) {}
     try { Events.emit('autonomy-speak', { line: 'la-la-la shi-la!', mood: 'happy' }); } catch (_) {}
     Pet.needs[NeedType.NASHI] = clamp(Pet.needs[NeedType.NASHI] + 5);
 }

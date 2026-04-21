@@ -998,6 +998,12 @@ export const Screens = {
             showToast('Test audio inviato. Hai sentito qualcosa?');
         });
 
+        // Ambient music toggle
+        document.getElementById('settings-ambient-toggle')?.addEventListener('change', (e) => {
+            SoundEngine.setAmbientEnabled(e.target.checked);
+            showToast(e.target.checked ? 'Musica di fondo attiva' : 'Musica di fondo spenta');
+        });
+
         // TTS toggle
         document.getElementById('settings-tts-toggle')?.addEventListener('change', (e) => {
             SoundEngine.playToggle(e.target.checked);
@@ -1197,6 +1203,8 @@ export const Screens = {
         }
         const ttsEl = document.getElementById('settings-tts-toggle');
         if (ttsEl) ttsEl.checked = localStorage.getItem('lalien_tts_enabled') !== '0';
+        const ambEl = document.getElementById('settings-ambient-toggle');
+        if (ambEl) ambEl.checked = SoundEngine.isAmbientEnabled();
         const tutEl = document.getElementById('settings-tutorial-toggle');
         if (tutEl) tutEl.checked = localStorage.getItem('lalien_tutorial_enabled') !== '0';
         const mindEl = document.getElementById('settings-mind-toggle');

@@ -1270,6 +1270,75 @@ function playYay(stage = 2) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Pet song — a short melodic phrase in the pet's own voice. The pet's base
+// pitch shifts per stage (small & squeaky early, rich & low by stage 7), and
+// the melody picks 5-7 notes from a mode that matches that stage's palette.
+// Called from Autonomy when the pet is happy enough to sing.
+// ---------------------------------------------------------------------------
+const PET_SONG_SCALES = [
+    [261.63, 329.63, 392.00, 523.25, 659.25],                // stage 0 — C pent maj
+    [261.63, 311.13, 392.00, 466.16, 587.33],                // 1 — C minor pent
+    [293.66, 349.23, 440.00, 523.25, 659.25],                // 2 — D minor open
+    [329.63, 392.00, 493.88, 587.33, 659.25, 783.99],        // 3 — E dorian-ish, bright
+    [293.66, 349.23, 440.00, 523.25, 659.25, 783.99],        // 4 — warm D minor 7
+    [329.63, 392.00, 440.00, 523.25, 659.25, 784.00, 988.0], // 5 — wider cosmic
+    [196.00, 261.63, 329.63, 392.00, 523.25],                // 6 — elder, lower
+    [261.63, 329.63, 392.00, 493.88, 659.25, 784.00],        // 7 — transcendent
+];
+function playPetMelody(stage = 3, opts = {}) {
+    if (!_enabled || _reducedMotion) return;
+    if (!ensureCtx()) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const s = clamp(stage | 0, 0, 7);
+    const scale = PET_SONG_SCALES[s] || PET_SONG_SCALES[3];
+    const noteCount = opts.noteCount || (4 + Math.floor(Math.random() * 3));  // 4-6
+    const stepMs = opts.stepMs || 220;
+    const pitchMul = [1.55, 1.45, 1.30, 1.15, 1.00, 0.88, 0.80, 0.92][s];
+
+    const t0 = now();
+    // Pick notes with a light melodic shape: start low-mid, rise, return
+    const seq = [];
+    let idx = Math.floor(scale.length / 2) - 1;
+    for (let i = 0; i < noteCount; i++) {
+        idx += (Math.random() < 0.55 ? 1 : -1) + (Math.random() < 0.15 ? 1 : 0);
+        idx = Math.max(0, Math.min(scale.length - 1, idx));
+        seq.push(scale[idx] * pitchMul);
+    }
+
+    for (let i = 0; i < seq.length; i++) {
+        const when = t0 + i * (stepMs / 1000);
+        const hz = seq[i];
+        // Short voiced syllable (triangle + sine shimmer, reverb wet)
+        const o1 = osc('triangle', hz);
+        const o2 = osc('sine', hz * 2);
+        const g  = ctx.createGain();
+        const g2 = ctx.createGain();
+        env(g,  when, { a: 0.02, d: 0.1, s: 0.5, r: 0.35, peak: 0.17 });
+        env(g2, when, { a: 0.02, d: 0.08, s: 0.2, r: 0.30, peak: 0.05 });
+        o1.connect(g);
+        o2.connect(g2);
+        connectOut(g, 0.7);
+        connectOut(g2, 0.8);
+        o1.start(when); o2.start(when);
+        o1.stop(when + 0.55);
+        o2.stop(when + 0.45);
+    }
+    // Gentle vibrato tail on the last note
+    const tailAt = t0 + (seq.length - 1) * (stepMs / 1000);
+    const tailHz = seq[seq.length - 1];
+    const ot = osc('sine', tailHz);
+    const gt = ctx.createGain();
+    const vib = osc('sine', 5);
+    const vibG = ctx.createGain(); vibG.gain.value = 6;
+    vib.connect(vibG).connect(ot.detune);
+    env(gt, tailAt + 0.2, { a: 0.05, d: 0.1, s: 0.6, r: 0.9, peak: 0.08 });
+    ot.connect(gt);
+    connectOut(gt, 0.9);
+    ot.start(tailAt + 0.15); ot.stop(tailAt + 1.3);
+    vib.start(tailAt + 0.15); vib.stop(tailAt + 1.3);
+}
+
 function playSniff(stage = 2) {
     if (!ensureCtx()) return;
     const vp = voiceParams(stage);
@@ -1679,6 +1748,10 @@ function stageAmbientSpec(stage) {
 
 function startAmbient(stage = 0) {
     if (!_enabled || _reducedMotion) return;
+    // Per-user preference: if ambient was disabled from settings, do nothing.
+    try {
+        if (localStorage.getItem('lalien_ambient_enabled') === '0') return;
+    } catch (_) {}
     if (!ensureCtx()) return;
     if (ctx.state === 'suspended') ctx.resume();
     const spec = stageAmbientSpec(stage);
@@ -1994,7 +2067,10 @@ function startAmbient(stage = 0) {
     const t0 = now();
     out.gain.cancelScheduledValues(t0);
     out.gain.setValueAtTime(0.0001, t0);
-    out.gain.exponentialRampToValueAtTime(1.0, t0 + 3.5);
+    // Soft target — the ambient bed should sit quietly under everything.
+    // 0.55 leaves headroom for pet chirps, TTS and minigame synths without
+    // becoming an invasive carpet. Duck is applied separately to this value.
+    out.gain.exponentialRampToValueAtTime(0.55, t0 + 3.5);
 
     ambient = { nodes, out, stage, timers };
 }
@@ -2039,6 +2115,27 @@ export const SoundEngine = {
     /** Expose the AudioContext + master bus so minigame synths share them. */
     getAudioContext() { ensureCtx(); return ctx; },
     getMasterBus()    { ensureCtx(); return master; },
+    /** Per-user toggle for the stage ambient bed, persisted separately from
+     *  the SFX master. When disabled, stopAmbient is called and startAmbient
+     *  becomes a no-op until re-enabled. */
+    isAmbientEnabled() {
+        try { return localStorage.getItem('lalien_ambient_enabled') !== '0'; }
+        catch { return true; }
+    },
+    setAmbientEnabled(on) {
+        try { localStorage.setItem('lalien_ambient_enabled', on ? '1' : '0'); } catch (_) {}
+        if (on) {
+            // Start at the stage the pet is currently in; caller may re-invoke
+            // startAmbient explicitly with a stage.
+            try {
+                import('../pet/pet.js').then(m => {
+                    startAmbient(m.Pet && m.Pet.getStage ? m.Pet.getStage() : 0);
+                }).catch(() => {});
+            } catch (_) {}
+        } else {
+            stopAmbient(0.6);
+        }
+    },
     /** Duck the stage ambient drone down so an in-foreground synth can be
      *  heard clearly. factor is a multiplier (0..1), fadeMs the ramp length. */
     duckAmbient(factor = 0.08, fadeMs = 600) {
@@ -2053,7 +2150,8 @@ export const SoundEngine = {
         const t = now();
         ambient.out.gain.cancelScheduledValues(t);
         ambient.out.gain.setValueAtTime(ambient.out.gain.value, t);
-        ambient.out.gain.linearRampToValueAtTime(1.0, t + fadeMs / 1000);
+        // Restore to the soft baseline — see startAmbient's fade-in target.
+        ambient.out.gain.linearRampToValueAtTime(0.55, t + fadeMs / 1000);
     },
     setEnabled(v) {
         _enabled = !!v;
@@ -2082,6 +2180,7 @@ export const SoundEngine = {
     playMoodChirp,
     playSleepYawn, playSnore, playMunch, playCough, playWhimper, playGrumble,
     playMeditateHum, playLaugh, playYay, playSniff, playSigh, playHiccup,
+    playPetMelody,
 
     // Activity loops
     startSnoreLoop, stopSnoreLoop,

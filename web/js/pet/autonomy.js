@@ -288,6 +288,13 @@ function checkTick() {
         if (Math.random() < 0.08) {
             _lastSpeakAt = nowMs;
             const line = PHRASES.sing[Math.floor(Math.random() * PHRASES.sing.length)];
+            // Pet actually sings — a short pentatonic melody in its own voice
+            // that the keeper can hear alongside the text bubble.
+            try {
+                import('../audio/sound-engine.js').then(m => {
+                    m.SoundEngine.playPetMelody(Pet.getStage ? Pet.getStage() : 2);
+                }).catch(() => {});
+            } catch (_) {}
             Events.emit('autonomy-speak', { line, mood: 'happy' });
             return;
         }
