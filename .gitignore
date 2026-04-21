@@ -21,13 +21,21 @@ firmware/build/
 Thumbs.db
 desktop.ini
 
-# Secrets (never commit API keys)
+# Secrets — never commit API keys, device passwords, exported saves
 sd_card_template/certs/*.pem
 sd_card_template/certs/*.key
 .env
 .env.*
 *.pem
 *.key
+*.pfx
+deploy.env
+.envrc
+# Lalìen save exports (contain encrypted API keys + may include PIN hash)
+*.lalien-save.json
+# macOS / Windows lazy bits
+.AppleDouble
+ehthumbs.db
 
 # Claude Code local settings — can include allowed-command patterns that
 # embed inline credentials. NEVER commit.

@@ -28,7 +28,118 @@ const STAR_MAX_STARS = 8;
 const STAR_MAX_CONSTELLATIONS = 5;
 const STAR_HIT_R = 30;
 
-const GameType = { ECHO_MEMORY: 0, LIGHT_CLEANSING: 1, STAR_JOY: 2, TETRIS_KORA: 3, PACMAN_LALI: 4 };
+const GameType = {
+    ECHO_MEMORY:     0,  // deprecated, kept for save compatibility
+    LIGHT_CLEANSING: 1,  // deprecated, kept for save compatibility
+    STAR_JOY:        2,  // deprecated, kept for save compatibility
+    TETRIS_KORA:     3,
+    PACMAN_LALI:     4,
+    KORIMA_HARP:     5,   // ambient: free-play pentatonic harp
+    VITH_BREATH:     6,   // ambient: tap-in-rhythm breathing meditation
+    THI_SING:        7,   // synth: theremin / tone-plane improvisation
+    SHALIM_KORO:     8,   // synth: chord stacking puzzle
+    VYTHI_PULSE:     9,   // synth: step-sequencer rhythm composer
+};
+
+// ---------------------------------------------------------------------------
+// Shared audio context for the ambient minigames (sustained tones, pads).
+// Kept separate from SoundEngine — these games need long releases and custom
+// chords that don't fit the short percussive SFX palette.
+// ---------------------------------------------------------------------------
+let _ambCtx = null;
+let _ambMaster = null;
+let _ambPad = null;
+
+function ambCtx() {
+    if (_ambCtx) return _ambCtx;
+    // Reuse the main SoundEngine AudioContext — that one is reliably resumed
+    // on user gesture. A separate context can stay 'suspended' on iOS Safari,
+    // swallowing the first chord silently.
+    try {
+        const ctx = SoundEngine.getAudioContext && SoundEngine.getAudioContext();
+        const main = SoundEngine.getMasterBus && SoundEngine.getMasterBus();
+        if (ctx && main) {
+            _ambCtx = ctx;
+            _ambMaster = ctx.createGain();
+            // Minigame synth foreground. The stage ambient is ducked
+            // separately via SoundEngine.duckAmbient() so we don't need an
+            // aggressive boost here.
+            _ambMaster.gain.value = 0.9;
+            _ambMaster.connect(main);
+            return _ambCtx;
+        }
+    } catch (_) {}
+    // Fallback: stand-alone context
+    try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        _ambCtx = new AC();
+        _ambMaster = _ambCtx.createGain();
+        _ambMaster.gain.value = 0.18;
+        _ambMaster.connect(_ambCtx.destination);
+    } catch (_) { _ambCtx = null; }
+    return _ambCtx;
+}
+
+// Call this at every synth entry-point that schedules audio. iOS/Safari
+// refuse to play if the AudioContext is in 'suspended' state until a user
+// gesture kicks it. Cheap and idempotent.
+function ensureAmbAwake() {
+    const ctx = ambCtx();
+    if (!ctx) return null;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    return ctx;
+}
+
+function ambPluck(freq, dur = 2.2, type = 'triangle', peak = 0.18) {
+    const ctx = ensureAmbAwake();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    // Two layered oscillators (fifth interval) for richness
+    [1, 1.5].forEach((mul, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = i === 0 ? type : 'sine';
+        o.frequency.value = freq * mul;
+        o.detune.value = (i === 0 ? 0 : 4);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(peak * (i === 0 ? 1 : 0.35), t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g).connect(_ambMaster);
+        o.start(t);
+        o.stop(t + dur + 0.1);
+    });
+}
+
+function ambStartPad(rootHz = 65.4) {  // C2
+    const ctx = ensureAmbAwake();
+    if (!ctx || _ambPad) return;
+    const t = ctx.currentTime;
+    _ambPad = { osc: [], gain: ctx.createGain() };
+    _ambPad.gain.gain.setValueAtTime(0.0001, t);
+    _ambPad.gain.gain.exponentialRampToValueAtTime(0.06, t + 3);
+    _ambPad.gain.connect(_ambMaster);
+    // Three detuned oscillators for a soft pad
+    [1, 1.001, 1.5].forEach((mul, i) => {
+        const o = ctx.createOscillator();
+        o.type = i === 2 ? 'sine' : 'triangle';
+        o.frequency.value = rootHz * mul;
+        o.detune.value = (i - 1) * 6;
+        o.connect(_ambPad.gain);
+        o.start(t);
+        _ambPad.osc.push(o);
+    });
+}
+
+function ambStopPad() {
+    if (!_ambPad || !_ambCtx) return;
+    const t = _ambCtx.currentTime;
+    _ambPad.gain.gain.cancelScheduledValues(t);
+    _ambPad.gain.gain.setValueAtTime(_ambPad.gain.gain.value, t);
+    _ambPad.gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+    const pad = _ambPad;
+    _ambPad = null;
+    setTimeout(() => { try { pad.osc.forEach(o => o.stop()); } catch (_) {} }, 1400);
+}
 
 // ---- Echo Memory State ----
 // Phases: 'pause' → 'flash' → 'gap' → (next step or 'input') → 'success' → 'pause' (next round)
@@ -471,12 +582,50 @@ function tetDrop() {
     tetLock();
 }
 
+// Gesture state for mobile Tetris: we don't act on touch-down alone so a
+// casual tap on the screen doesn't hard-drop the piece.
+let tetGest = { x0: 0, y0: 0, lx: 0, ly: 0, t0: 0, moved: false, pending: null };
+const TET_SWIPE_PX = 22;   // canvas-coord threshold per cell of motion
+
 function tetHandleTouch(x, y, dragging, vw, vh) {
     if (tet.over && tet.overTimer > 60) { tetInit(); return; }
-    if (y < vh * 0.2) tetRotate();
-    else if (x < vw * 0.33) tetMove(-1);
-    else if (x > vw * 0.67) tetMove(1);
-    else tetDrop();
+    if (!dragging) {
+        // Touch start — remember origin; do NOT act yet
+        tetGest = { x0: x, y0: y, lx: x, ly: y, t0: Date.now(), moved: false };
+        return;
+    }
+    // Drag — emit discrete moves per cell of travel
+    const dx = x - tetGest.lx;
+    const dy = y - tetGest.ly;
+    if (Math.abs(dx) >= TET_SWIPE_PX) {
+        tetMove(dx > 0 ? 1 : -1);
+        tetGest.lx = x;
+        tetGest.moved = true;
+    }
+    if (dy >= TET_SWIPE_PX) {
+        // Soft drop one row
+        if (!tetCollides(tet.piece, tet.rot, tet.px, tet.py + 1)) {
+            tet.py++;
+            tet.score += 1;
+        }
+        tetGest.ly = y;
+        tetGest.moved = true;
+    }
+}
+
+function tetHandleRelease() {
+    if (tet.over) return;
+    const dt = Date.now() - tetGest.t0;
+    const totalDy = tetGest.ly - tetGest.y0;
+    const totalDx = tetGest.lx - tetGest.x0;
+    if (!tetGest.moved && dt < 400) {
+        // Clean tap = rotate
+        tetRotate();
+    } else if (totalDy > 90 && Math.abs(totalDx) < 40 && dt < 350) {
+        // Fast flick down = hard drop
+        tetDrop();
+    }
+    // Otherwise (slow drag) we already emitted per-cell moves; do nothing here.
 }
 
 function tetHandleKey(ev) {
@@ -524,6 +673,8 @@ let pac = {
     grid: [], pet: { x: 7, y: 5, dir: 0, nextDir: 0 },
     ghosts: [], pelletCount: 0, pelletsLeft: 0, powerTimer: 0, score: 0,
     over: false, won: false, frame: 0, overTimer: 0,
+    fruit: null,      // { x, y, kind, hz, expiresAt } — appears twice per run
+    fruitSpawnTicks: [],  // frames at which to spawn
 };
 const PAC_DIRS = [[1,0],[0,1],[-1,0],[0,-1]];
 
@@ -539,6 +690,10 @@ function pacInit() {
     for (const row of pac.grid) for (const c of row) if (c === 2 || c === 3) pac.pelletCount++;
     pac.pelletsLeft = pac.pelletCount;
     pac.powerTimer = 0; pac.score = 0; pac.over = false; pac.won = false; pac.frame = 0; pac.overTimer = 0;
+    // Fruit appears after 30% and 70% of the pellets have been collected
+    pac.fruit = null;
+    pac.fruitSpawnTicks = [];  // trigger by pellet progress, not time
+    pac.fruitsSpawned = 0;
 }
 
 function pacCellFree(x, y) {
@@ -575,6 +730,36 @@ function pacUpdate() {
         try { SoundEngine.playPacPellet(); } catch (_) {} }
     else if (cell === 3) { pac.grid[pet.y][pet.x] = 0; pac.pelletsLeft--; pac.score += 50; pac.powerTimer = 480;
         try { SoundEngine.playPacPower(); } catch (_) {} }
+
+    // Fruit spawn at 30% and 70% pellet progress
+    const progress = 1 - pac.pelletsLeft / pac.pelletCount;
+    const targets = [0.3, 0.7];
+    for (let i = pac.fruitsSpawned; i < targets.length; i++) {
+        if (progress >= targets[i]) {
+            // pick a random free cell
+            const free = [];
+            for (let y = 0; y < PAC_ROWS; y++) for (let x = 0; x < PAC_COLS; x++)
+                if (pac.grid[y][x] === 0 && !(x === pet.x && y === pet.y)) free.push({ x, y });
+            if (free.length) {
+                const spot = free[Math.floor(Math.random() * free.length)];
+                const kinds = ['kora', 'nashi', 'vythi'];
+                pac.fruit = {
+                    x: spot.x, y: spot.y,
+                    kind: kinds[i % kinds.length],
+                    value: 300 + i * 150,
+                    expiresAt: pac.frame + 60 * 8,   // 8 seconds
+                };
+                pac.fruitsSpawned++;
+            }
+        }
+    }
+    // Fruit collision
+    if (pac.fruit && pac.fruit.x === pet.x && pac.fruit.y === pet.y) {
+        pac.score += pac.fruit.value;
+        try { SoundEngine.playPacPower(); } catch (_) {}
+        pac.fruit = null;
+    }
+    if (pac.fruit && pac.frame > pac.fruit.expiresAt) pac.fruit = null;
 
     if (pac.pelletsLeft <= 0) { pac.won = true; pac.overTimer = 0; pac.score += 200;
         try { SoundEngine.playPacWin(); } catch (_) {}
@@ -642,6 +827,1208 @@ let _playing = false;
 let _currentGame = GameType.ECHO_MEMORY;
 let _tick = 0;
 
+// ---------------------------------------------------------------------------
+// KORIMA-CELESTE — ambient pentatonic harp, free play, no fail.
+// ---------------------------------------------------------------------------
+const HARP_DURATION_TICKS = 90 * 60;   // ~90 seconds at 60 fps
+const HARP_STRINGS = [
+    // C major pentatonic across two octaves (C4 → D5)
+    { name: 'C4', hz: 261.63 },
+    { name: 'D4', hz: 293.66 },
+    { name: 'E4', hz: 329.63 },
+    { name: 'G4', hz: 392.00 },
+    { name: 'A4', hz: 440.00 },
+    { name: 'C5', hz: 523.25 },
+    { name: 'D5', hz: 587.33 },
+];
+let harp = {
+    t: 0,
+    notes: 0,
+    lastStringAt: [],   // tick of last pluck per string (for glow decay)
+    particles: [],      // rising motes from plucked strings
+    lastDragString: -1,
+};
+
+function harpInit() {
+    harp.t = 0;
+    harp.notes = 0;
+    harp.lastStringAt = new Array(HARP_STRINGS.length).fill(-9999);
+    harp.particles = [];
+    harp.lastDragString = -1;
+    ambStartPad(65.4);   // C2 drone
+}
+
+function harpUpdate() {
+    harp.t++;
+    // Drift particles upward, fade
+    harp.particles = harp.particles.filter(p => p.life > 0);
+    for (const p of harp.particles) {
+        p.y += p.vy;
+        p.x += p.vx;
+        p.life -= 0.012;
+    }
+}
+
+function harpHitString(x, y, vw, vh) {
+    const margin = Math.min(60, vw * 0.08);
+    const span = vw - margin * 2;
+    const step = span / (HARP_STRINGS.length - 1);
+    for (let i = 0; i < HARP_STRINGS.length; i++) {
+        const sx = margin + i * step;
+        if (Math.abs(x - sx) < step * 0.45 && y > vh * 0.15 && y < vh * 0.92) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function harpPluck(i) {
+    if (i < 0 || i >= HARP_STRINGS.length) return;
+    harp.lastStringAt[i] = harp.t;
+    harp.notes++;
+    ambPluck(HARP_STRINGS[i].hz, 2.6, 'triangle', 0.22);
+    // Add particles at the top of this string
+    const vw = 800, vh = 400;
+    const margin = Math.min(60, vw * 0.08);
+    const span = vw - margin * 2;
+    const step = span / (HARP_STRINGS.length - 1);
+    const sx = margin + i * step;
+    const hue = 180 + i * 22;
+    for (let k = 0; k < 6; k++) {
+        harp.particles.push({
+            x: sx + (Math.random() - 0.5) * 14,
+            y: vh * 0.5 + (Math.random() - 0.5) * 40,
+            vx: (Math.random() - 0.5) * 0.6,
+            vy: -0.8 - Math.random() * 0.8,
+            r: 2 + Math.random() * 2,
+            hue,
+            life: 1,
+        });
+    }
+}
+
+function harpHandleTouch(x, y, dragging, vw, vh) {
+    vw = vw || 800; vh = vh || 400;
+    const i = harpHitString(x, y, vw, vh);
+    if (i < 0) { harp.lastDragString = -1; return; }
+    if (dragging) {
+        // While dragging, only trigger when crossing into a different string
+        if (i !== harp.lastDragString) {
+            harpPluck(i);
+            harp.lastDragString = i;
+        }
+    } else {
+        harpPluck(i);
+        harp.lastDragString = i;
+    }
+}
+
+function renderHarp(ctx, w, h) {
+    // Soft twilight background gradient
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#0A0F1E');
+    bg.addColorStop(0.6, '#14203A');
+    bg.addColorStop(1, '#1E2A4A');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    // Background stars
+    for (let i = 0; i < 40; i++) {
+        const sx = (i * 97) % w;
+        const sy = (i * 53) % (h * 0.55);
+        const a = 0.2 + 0.5 * Math.abs(Math.sin(harp.t * 0.02 + i));
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#D8E8FF';
+        ctx.fillRect(sx, sy, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // Strings
+    const margin = Math.min(60, w * 0.08);
+    const span = w - margin * 2;
+    const step = span / (HARP_STRINGS.length - 1);
+    for (let i = 0; i < HARP_STRINGS.length; i++) {
+        const sx = margin + i * step;
+        const age = harp.t - harp.lastStringAt[i];
+        const glow = age < 120 ? (1 - age / 120) : 0;
+        const hue = 180 + i * 22;
+
+        // Base string (thin, faint)
+        ctx.strokeStyle = `hsla(${hue},60%,70%,0.35)`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(sx, h * 0.12);
+        ctx.lineTo(sx, h * 0.92);
+        ctx.stroke();
+
+        // Glow overlay when plucked
+        if (glow > 0) {
+            ctx.strokeStyle = `hsla(${hue},80%,72%,${0.85 * glow})`;
+            ctx.lineWidth = 3 + glow * 4;
+            // Wobble: amplitude decays with age
+            ctx.beginPath();
+            const amp = 8 * glow;
+            for (let y = h * 0.12; y <= h * 0.92; y += 4) {
+                const dx = Math.sin((y + harp.t * 3) * 0.05) * amp;
+                if (y === h * 0.12) ctx.moveTo(sx + dx, y);
+                else ctx.lineTo(sx + dx, y);
+            }
+            ctx.stroke();
+        }
+
+        // String label at top
+        ctx.fillStyle = glow > 0 ? `hsl(${hue},80%,80%)` : 'rgba(200,220,255,0.45)';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(HARP_STRINGS[i].name, sx, h * 0.08);
+    }
+
+    // Particles
+    for (const p of harp.particles) {
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = `hsl(${p.hue},80%,75%)`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Progress ring at top-right
+    const remain = Math.max(0, 1 - harp.t / HARP_DURATION_TICKS);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.ceil(remain * 90)}s · ${harp.notes} note`, w - 16, 22);
+
+    // Hint
+    if (harp.notes < 3 && harp.t < 180) {
+        ctx.fillStyle = 'rgba(212,165,52,0.85)';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Tocca o trascina sulle corde — ascolta il canto', w / 2, h * 0.97);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// VITH-ONDI — guided breathing. A target ring pulses slowly (5s inhale, 5s
+// exhale). The player's ring expands while they HOLD a finger on the canvas
+// and shrinks when they release. Goal: keep the two rings overlapped. A
+// sustained drone tracks the user's radius — pitch and brightness rise as
+// you hold, fall as you release — so syncing feels physically audible.
+// Score is accumulated every tick the two rings overlap within a tolerance.
+// ---------------------------------------------------------------------------
+const BREATH_DURATION_TICKS = 90 * 60;      // 90s
+const BREATH_CYCLE_SEC = 10;                 // 5s inhale + 5s exhale
+const BREATH_TARGET_IN_S = 5;
+const BREATH_TARGET_OUT_S = 5;
+let breath = {
+    t: 0,
+    score: 0,
+    cycles: 0,
+    holding: false,
+    userLevel: 0,         // 0..1, what the user is currently "breathing in"
+    targetLevel: 0,       // 0..1 script
+    syncFrames: 0,
+    lastPhase: 0,         // tracks target ring phase for cycle count
+    voice: null,          // sustained osc for the breath drone
+};
+
+function breathStartVoice() {
+    const ctx = ensureAmbAwake();
+    if (!ctx) return;
+    if (breath.voice) return;
+    const t = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.connect(_ambMaster);
+    // Two-voice drone: fundamental + fifth
+    const o1 = ctx.createOscillator();
+    o1.type = 'sine'; o1.frequency.value = 130.81;   // C3
+    const o2 = ctx.createOscillator();
+    o2.type = 'triangle'; o2.frequency.value = 196.00; // G3
+    o1.connect(gain); o2.connect(gain);
+    o1.start(t); o2.start(t);
+    breath.voice = { o1, o2, gain };
+}
+
+function breathUpdateVoice() {
+    if (!breath.voice || !_ambCtx) return;
+    const t = _ambCtx.currentTime;
+    // Gain and pitch follow user's held level
+    const gainTarget = 0.03 + breath.userLevel * 0.18;
+    breath.voice.gain.gain.cancelScheduledValues(t);
+    breath.voice.gain.gain.setValueAtTime(breath.voice.gain.gain.value, t);
+    breath.voice.gain.gain.linearRampToValueAtTime(gainTarget, t + 0.12);
+    // Detune slightly upward as breath rises
+    const detune = breath.userLevel * 120;
+    breath.voice.o1.detune.linearRampToValueAtTime(detune, t + 0.12);
+    breath.voice.o2.detune.linearRampToValueAtTime(detune * 1.3, t + 0.12);
+}
+
+function breathStopVoice() {
+    if (!breath.voice || !_ambCtx) return;
+    const t = _ambCtx.currentTime;
+    const v = breath.voice;
+    breath.voice = null;
+    v.gain.gain.cancelScheduledValues(t);
+    v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+    v.gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    setTimeout(() => { try { v.o1.stop(); v.o2.stop(); } catch (_) {} }, 1000);
+}
+
+function breathInit() {
+    breath.t = 0; breath.score = 0; breath.cycles = 0;
+    breath.holding = false; breath.userLevel = 0; breath.targetLevel = 0;
+    breath.syncFrames = 0; breath.lastPhase = 0;
+    breathStartVoice();
+}
+
+function breathTargetAt(tSec) {
+    // Triangle-like curve smoothed via cosine: 0 at start, 1 at BREATH_TARGET_IN_S,
+    // 0 at BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S, loops.
+    const cyc = BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S;
+    const phase = (tSec % cyc) / cyc;
+    return 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
+}
+
+function breathUpdate() {
+    breath.t++;
+    const tSec = breath.t / 60;
+    breath.targetLevel = breathTargetAt(tSec);
+
+    // User level: rise when holding (slowly, ~5s to full), fall when released
+    const RISE = 1 / (5 * 60);     // full in 5s
+    const FALL = 1 / (5 * 60);
+    if (breath.holding) breath.userLevel = Math.min(1, breath.userLevel + RISE);
+    else                breath.userLevel = Math.max(0, breath.userLevel - FALL);
+
+    // Cycle counter — when target phase wraps past 1 (trough) count a cycle
+    const phase = (tSec % (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S)) / (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S);
+    if (phase < breath.lastPhase) breath.cycles++;   // wrap
+    breath.lastPhase = phase;
+
+    // Sync scoring: reward every frame the two levels are within 12%
+    const diff = Math.abs(breath.userLevel - breath.targetLevel);
+    if (diff < 0.12) {
+        breath.score += Math.round((1 - diff / 0.12) * 3);
+        breath.syncFrames++;
+    }
+
+    breathUpdateVoice();
+}
+
+function breathHandleTouch(x, y, dragging, vw, vh) {
+    // Pressing anywhere = holding breath in. Move = still holding.
+    breath.holding = true;
+}
+
+function breathHandleRelease() {
+    breath.holding = false;
+}
+
+function renderBreath(ctx, w, h) {
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#08102A');
+    bg.addColorStop(0.5, '#0E2848');
+    bg.addColorStop(1, '#103054');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2, cy = h / 2;
+    const rMin = Math.min(w, h) * 0.10;
+    const rMax = Math.min(w, h) * 0.42;
+    const rUser   = rMin + (rMax - rMin) * breath.userLevel;
+    const rTarget = rMin + (rMax - rMin) * breath.targetLevel;
+    const inSync  = Math.abs(breath.userLevel - breath.targetLevel) < 0.12;
+
+    // Target ring (dotted outline)
+    ctx.save();
+    ctx.strokeStyle = inSync ? '#9FE6B4' : '#7FAEDC';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.arc(cx, cy, rTarget, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+
+    // User ring (solid, filled soft)
+    const fill = inSync ? 'rgba(180,240,200,0.45)' : 'rgba(160,210,245,0.35)';
+    ctx.fillStyle = fill;
+    ctx.beginPath(); ctx.arc(cx, cy, rUser, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = breath.holding ? '#FFFFFF' : 'rgba(230,245,255,0.7)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(cx, cy, rUser, 0, Math.PI * 2); ctx.stroke();
+
+    // Center guide
+    ctx.fillStyle = 'rgba(240,248,255,0.9)';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    const phase = (breath.t / 60) % (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S);
+    const inhale = phase < BREATH_TARGET_IN_S;
+    const secLeft = Math.ceil(inhale ? (BREATH_TARGET_IN_S - phase) : (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S - phase));
+    ctx.fillText(inhale ? `inspira · ${secLeft}s` : `espira · ${secLeft}s`, cx, cy - 4);
+
+    // Sub-instruction
+    ctx.fillStyle = 'rgba(200,220,245,0.75)';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(inhale ? 'tieni premuto per espandere' : 'rilascia per contrarre', cx, cy + 16);
+
+    // Bottom hint
+    ctx.fillStyle = 'rgba(200,220,245,0.55)';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('segui il cerchio tratteggiato · respira con lui', cx, h - 18);
+
+    // Progress + sync meter
+    const remain = Math.max(0, 1 - breath.t / BREATH_DURATION_TICKS);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.ceil(remain * 90)}s · ${breath.cycles} cicli · sync ${Math.round(breath.syncFrames / Math.max(1, breath.t) * 100)}%`, w - 16, 22);
+
+    // Sync pulse in corner
+    if (inSync) {
+        ctx.fillStyle = '#9FE6B4';
+        ctx.fillRect(w - 16, 28, 6, 6);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// THI-SING — two-axis theremin. X = pitch bucket (7 pentatonic notes),
+// Y = tone brightness (filter/osc mix). Finger drag shapes a continuous
+// melody over a slow chord pad. Pure improvisation, no fail.
+// ---------------------------------------------------------------------------
+const THI_DURATION_TICKS = 80 * 60;
+const THI_SCALE = [261.63, 311.13, 349.23, 392.00, 466.16, 523.25, 622.25];  // C minor blues-ish for pads
+const THI_CHORDS = [
+    [130.81, 155.56, 196.00],   // C minor
+    [138.59, 164.81, 207.65],   // C# dim / pad
+    [155.56, 185.00, 233.08],   // Eb min
+    [146.83, 174.61, 220.00],   // D min
+];
+let thi = {
+    t: 0,
+    notes: 0,
+    trail: [],          // recent touch points for a comet trail
+    lastBucket: -1,
+    currentChord: 0,
+    voice: null,        // sustained osc while finger held
+};
+
+function thiInit() {
+    thi.t = 0; thi.notes = 0; thi.trail = []; thi.lastBucket = -1; thi.currentChord = 0;
+    thi.voice = null;
+    // Slow chord pad: changes every 16s
+    _thiPad = null;
+    thiPadCycle();
+}
+
+let _thiPad = null;
+function thiPadCycle() {
+    const ctx = ambCtx();
+    if (!ctx) return;
+    const chord = THI_CHORDS[thi.currentChord];
+    const t = ctx.currentTime;
+    // Fade out previous
+    if (_thiPad) {
+        const old = _thiPad;
+        _thiPad.gain.gain.cancelScheduledValues(t);
+        _thiPad.gain.gain.setValueAtTime(_thiPad.gain.gain.value, t);
+        _thiPad.gain.gain.exponentialRampToValueAtTime(0.0001, t + 4);
+        setTimeout(() => { try { old.osc.forEach(o => o.stop()); } catch (_) {} }, 4500);
+    }
+    _thiPad = { osc: [], gain: ctx.createGain() };
+    _thiPad.gain.gain.setValueAtTime(0.0001, t);
+    _thiPad.gain.gain.exponentialRampToValueAtTime(0.07, t + 3);
+    _thiPad.gain.connect(_ambMaster);
+    for (const hz of chord) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = hz;
+        o.detune.value = (Math.random() - 0.5) * 8;
+        o.connect(_thiPad.gain);
+        o.start(t);
+        _thiPad.osc.push(o);
+    }
+}
+
+function thiUpdate() {
+    thi.t++;
+    // Cycle chord every 16s
+    if (thi.t % (16 * 60) === 0) {
+        thi.currentChord = (thi.currentChord + 1) % THI_CHORDS.length;
+        thiPadCycle();
+    }
+    // Decay trail
+    thi.trail = thi.trail.filter(p => p.life > 0);
+    for (const p of thi.trail) p.life -= 0.02;
+}
+
+function thiStartVoice() {
+    const ctx = ensureAmbAwake();
+    if (!ctx || thi.voice) return;
+    const t = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    gain.connect(_ambMaster);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = THI_SCALE[3];
+    osc.connect(gain);
+    osc.start(t);
+    const vib = ctx.createOscillator();
+    const vibG = ctx.createGain();
+    vib.frequency.value = 5;
+    vibG.gain.value = 2;
+    vib.connect(vibG).connect(osc.frequency);
+    vib.start(t);
+    thi.voice = { osc, gain, vib };
+}
+
+function thiStopVoice() {
+    if (!thi.voice || !_ambCtx) return;
+    const t = _ambCtx.currentTime;
+    const v = thi.voice;
+    thi.voice = null;
+    v.gain.gain.cancelScheduledValues(t);
+    v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+    v.gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    setTimeout(() => { try { v.osc.stop(); v.vib.stop(); } catch (_) {} }, 600);
+}
+
+function thiHandleTouch(x, y, dragging, vw, vh) {
+    vw = vw || 800; vh = vh || 400;
+    const bucket = Math.max(0, Math.min(THI_SCALE.length - 1, Math.floor(x / vw * THI_SCALE.length)));
+    const brightness = Math.max(0, Math.min(1, 1 - y / vh));
+
+    if (!dragging) {
+        // New touch → start voice, count a note
+        thiStartVoice();
+        thi.notes++;
+    }
+    if (!thi.voice) return;
+
+    const ctx = ambCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const hz = THI_SCALE[bucket];
+    thi.voice.osc.frequency.linearRampToValueAtTime(hz, t + 0.04);
+    const target = 0.06 + brightness * 0.14;
+    thi.voice.gain.gain.cancelScheduledValues(t);
+    thi.voice.gain.gain.setValueAtTime(thi.voice.gain.gain.value, t);
+    thi.voice.gain.gain.linearRampToValueAtTime(target, t + 0.06);
+    // Change oscillator type based on brightness: sine → triangle → sawtooth
+    thi.voice.osc.type = brightness < 0.33 ? 'sine' : brightness < 0.66 ? 'triangle' : 'sawtooth';
+
+    // Trail
+    thi.trail.push({ x, y, hue: 180 + bucket * 25, life: 1 });
+    if (thi.trail.length > 40) thi.trail.shift();
+    if (bucket !== thi.lastBucket && dragging) thi.notes++;
+    thi.lastBucket = bucket;
+}
+
+function thiHandleRelease() {
+    thiStopVoice();
+    thi.lastBucket = -1;
+}
+
+function renderThi(ctx, w, h) {
+    // Starry twilight
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#0A0F20');
+    bg.addColorStop(1, '#182840');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    // Pentatonic pitch lanes (subtle vertical bands)
+    for (let i = 0; i < THI_SCALE.length; i++) {
+        const x = (i + 0.5) * w / THI_SCALE.length;
+        ctx.strokeStyle = `hsla(${180 + i * 25},50%,60%,0.15)`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, 30);
+        ctx.lineTo(x, h - 20);
+        ctx.stroke();
+        // Note label at bottom
+        ctx.fillStyle = `hsla(${180 + i * 25},70%,75%,0.4)`;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        const names = ['C','Eb','F','G','Bb','C2','Eb2'];
+        ctx.fillText(names[i], x, h - 6);
+    }
+
+    // Brightness-Y reference (top = bright, bottom = soft)
+    ctx.fillStyle = 'rgba(200,220,245,0.45)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('↑ luminoso · sotto morbido →', 12, 18);
+
+    // Trail
+    for (const p of thi.trail) {
+        ctx.globalAlpha = p.life * 0.75;
+        ctx.fillStyle = `hsl(${p.hue},80%,70%)`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4 * p.life, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Chord name top-right
+    const chordNames = ['Do minore', 'Do# dim', 'Mi♭ min', 'Re min'];
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`pad: ${chordNames[thi.currentChord]}`, w - 16, 18);
+
+    // Progress
+    const remain = Math.max(0, 1 - thi.t / THI_DURATION_TICKS);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(`${Math.ceil(remain * 80)}s · ${thi.notes} note`, w - 16, 34);
+
+    // Hint when idle
+    if (!thi.voice && thi.t < 180) {
+        ctx.fillStyle = 'rgba(212,165,52,0.85)';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Trascina il dito: orizzontale = tono, verticale = timbro', w / 2, h / 2);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SHALIM-KORO — chord synth inspired by the Telepathic Instruments Orchid.
+// 7 diatonic chord pads in a horizontal row (I ii iii IV V vi vii°) in the
+// current mode. HOLD a pad → a lush voiced chord sustains with soft attack
+// and long release. Slide to the neighbour → smooth crossfade. Release your
+// finger → the chord fades out. Three toggles at the top switch mode
+// (maggiore / minore / dorian), harmonic extension (triade / 7 / 7+9), and
+// voice timbre (morbido / brillante). No target, no fail — improvisation.
+// ---------------------------------------------------------------------------
+const SHALIM_DURATION_TICKS = 90 * 60;
+const SHALIM_ROOT_HZ = 130.81;   // C3 tonic
+// Semitone offsets for the seven diatonic triads, per mode. Each triad is
+// [root, third, fifth] relative to the tonic.
+const SHALIM_MODES = {
+    maggiore: [[0, 4, 7], [2, 5, 9],  [4, 7, 11], [5, 9, 12], [7, 11, 14], [9, 12, 16], [11, 14, 17]],
+    minore:   [[0, 3, 7], [2, 5, 8],  [3, 7, 10], [5, 8, 12], [7, 10, 14], [8, 12, 15], [10, 13, 17]],
+    dorian:   [[0, 3, 7], [2, 5, 9],  [3, 7, 10], [5, 9, 12], [7, 10, 14], [9, 12, 15], [10, 14, 17]],
+};
+const SHALIM_MODE_NAMES = Object.keys(SHALIM_MODES);
+const SHALIM_LABELS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
+
+let shalim = {
+    t: 0,
+    held: -1,            // index of currently held pad, -1 none
+    heldFrames: 0,       // cumulative frames of any hold
+    uniqueChords: new Set(),
+    modeIdx: 0,
+    extension: 0,        // 0=triade, 1=+7, 2=+7+9
+    brightness: 0,       // 0=morbido, 1=brillante
+    octave: 0,           // -1, 0, +1 (semitone shift = *12)
+    hold: false,         // when true, released pads keep ringing
+    arpMode: false,      // when true, chord plays as arpeggio loop instead of sustained
+    arpStepTimer: 0,
+    arpStep: 0,
+    arpPad: -1,          // which pad the arp is cycling
+    arpNotes: [],        // cached frequency sequence for the current arp
+    glow: new Array(7).fill(0),
+    voice: null,         // { oscs, gain, padIdx }
+    padRects: [],        // recomputed on touch/render
+    toggleRects: [],
+};
+
+function shalimInit() {
+    shalim.t = 0;
+    shalim.held = -1;
+    shalim.heldFrames = 0;
+    shalim.uniqueChords = new Set();
+    shalim.modeIdx = 0;
+    shalim.extension = 0;
+    shalim.brightness = 0;
+    shalim.octave = 0;
+    shalim.hold = false;
+    shalim.arpMode = false;
+    shalim.arpStepTimer = 0;
+    shalim.arpStep = 0;
+    shalim.arpPad = -1;
+    shalim.arpNotes = [];
+    shalim.glow.fill(0);
+    shalim.voice = null;
+    shalim.padRects = [];
+    shalim.toggleRects = [];
+}
+
+function shalimChordFreqs(degree) {
+    const modeName = SHALIM_MODE_NAMES[shalim.modeIdx];
+    const triad = SHALIM_MODES[modeName][degree];
+    const semis = triad.slice();
+    if (shalim.extension >= 1) semis.push(triad[0] + 10);
+    if (shalim.extension >= 2) semis.push(triad[0] + 14);
+    const oct = (shalim.octave || 0) * 12;
+    return {
+        bass: SHALIM_ROOT_HZ * Math.pow(2, (triad[0] - 12 + oct) / 12),
+        notes: semis.map(s => SHALIM_ROOT_HZ * Math.pow(2, (s + oct) / 12)),
+    };
+}
+
+function shalimStartChord(padIdx) {
+    const ctx = ensureAmbAwake();
+    if (!ctx) return;
+    // Crossfade previous chord if any
+    shalimReleaseChord(0.35);
+
+    const { bass, notes } = shalimChordFreqs(padIdx);
+    const t = ctx.currentTime;
+    const peakGain = 0.20;
+    const attack = 0.45;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peakGain, t + attack);
+    gain.connect(_ambMaster);
+
+    // Warm low-pass for the whole chord
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1800 + shalim.brightness * 2600;
+    lp.Q.value = 0.7;
+    lp.connect(gain);
+
+    const oscs = [];
+    const bright = shalim.brightness > 0.5;
+
+    // Bass — sine + sub
+    [bass, bass / 2].forEach((hz, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = hz;
+        g.gain.value = i === 0 ? 0.55 : 0.25;
+        o.connect(g).connect(lp);
+        o.start(t);
+        oscs.push(o);
+    });
+
+    // Chord voices — triad + optional extensions, each note with 2 layered
+    // oscillators slightly detuned for thickness (like an analog poly-synth).
+    notes.forEach((hz, i) => {
+        [[0, bright ? 'sawtooth' : 'triangle', 0.18],
+         [6, 'sine', 0.10],
+         [-5, 'sine', 0.08]].forEach(([detune, type, vol]) => {
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.type = type;
+            o.frequency.value = hz;
+            o.detune.value = detune;
+            // Stagger attack per voice for a soft "strum"
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(vol, t + attack + i * 0.04);
+            o.connect(g).connect(lp);
+            o.start(t);
+            oscs.push(o);
+        });
+    });
+
+    // Tremolo on gain for life
+    const lfo = ctx.createOscillator();
+    const lfoG = ctx.createGain();
+    lfo.frequency.value = 3.8;
+    lfoG.gain.value = 0.025;
+    lfo.connect(lfoG).connect(gain.gain);
+    lfo.start(t);
+    oscs.push(lfo);
+
+    shalim.voice = { oscs, gain, padIdx };
+    shalim.uniqueChords.add(padIdx);
+}
+
+function shalimReleaseChord(releaseSec = 1.8) {
+    if (!shalim.voice || !_ambCtx) return;
+    const t = _ambCtx.currentTime;
+    const v = shalim.voice;
+    shalim.voice = null;
+    v.gain.gain.cancelScheduledValues(t);
+    v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+    v.gain.gain.exponentialRampToValueAtTime(0.0001, t + releaseSec);
+    setTimeout(() => { try { v.oscs.forEach(o => o.stop()); } catch (_) {} }, releaseSec * 1000 + 80);
+}
+
+function shalimUpdate() {
+    shalim.t++;
+    const ringing = shalim.held >= 0 || (shalim.hold && shalim.voice) ||
+                    (shalim.arpMode && shalim.arpPad >= 0);
+    if (ringing) shalim.heldFrames++;
+
+    // Glow: ringing pad stays bright, others dim
+    const activePad = (shalim.arpMode && shalim.arpPad >= 0) ? shalim.arpPad : shalim.held;
+    for (let i = 0; i < shalim.glow.length; i++) {
+        if (i === activePad && ringing) {
+            shalim.glow[i] = Math.min(1, shalim.glow[i] + 0.1);
+        } else {
+            shalim.glow[i] = Math.max(0, shalim.glow[i] - 0.03);
+        }
+    }
+
+    // Arpeggiator tick (8th notes at 100 BPM = 150ms)
+    if (shalim.arpMode && shalim.arpPad >= 0 && shalim.arpNotes.length) {
+        shalim.arpStepTimer += 1 / 60;
+        if (shalim.arpStepTimer >= 0.15) {
+            shalim.arpStepTimer = 0;
+            const hz = shalim.arpNotes[shalim.arpStep % shalim.arpNotes.length];
+            shalim.arpStep++;
+            shalimArpNote(hz);
+        }
+    }
+}
+
+function shalimArpNote(hz) {
+    const ctx = ensureAmbAwake();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const bright = shalim.brightness > 0.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.17, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    g.connect(_ambMaster);
+    const o = ctx.createOscillator();
+    o.type = bright ? 'sawtooth' : 'triangle';
+    o.frequency.value = hz;
+    o.connect(g);
+    o.start(t); o.stop(t + 0.5);
+    // Shimmer harmonic
+    const o2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    o2.type = 'sine'; o2.frequency.value = hz * 2;
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o2.connect(g2).connect(_ambMaster);
+    o2.start(t); o2.stop(t + 0.4);
+}
+
+function shalimComputeGeometry(w, h) {
+    // Pads row
+    const rowTop = 128;
+    const rowBottom = h - 26;
+    const rowH = rowBottom - rowTop;
+    const padMarginX = 18;
+    const gap = 8;
+    const padCount = 7;
+    const padW = Math.floor((w - padMarginX * 2 - gap * (padCount - 1)) / padCount);
+    shalim.padRects = [];
+    for (let i = 0; i < padCount; i++) {
+        shalim.padRects.push({
+            x: padMarginX + i * (padW + gap),
+            y: rowTop, w: padW, h: rowH,
+        });
+    }
+    // Two rows of toggles: the three "flavour" switches (mode/ext/bri) up
+    // top, then three performance switches (octave/hold/arpeggio) below.
+    const topRow = ['mode', 'ext', 'bri'];
+    const botRow = ['oct',  'hold', 'arp'];
+    const tW = Math.min(108, w * 0.18);
+    const tGap = 8;
+    const tH = 22;
+    const tTotalW = tW * 3 + tGap * 2;
+    shalim.toggleRects = [];
+    const makeRow = (kinds, yy) => {
+        let xx = (w - tTotalW) / 2;
+        for (const kind of kinds) {
+            shalim.toggleRects.push({ kind, x: xx, y: yy, w: tW, h: tH });
+            xx += tW + tGap;
+        }
+    };
+    makeRow(topRow, 56);
+    makeRow(botRow, 56 + tH + 6);
+}
+
+function shalimPadAt(x, y) {
+    for (let i = 0; i < shalim.padRects.length; i++) {
+        const r = shalim.padRects[i];
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return i;
+    }
+    return -1;
+}
+
+function shalimHandleTouch(x, y, dragging, vw, vh) {
+    shalimComputeGeometry(vw, vh);
+    // Toggles — only on fresh taps
+    if (!dragging) {
+        for (const tg of shalim.toggleRects) {
+            if (x >= tg.x && x <= tg.x + tg.w && y >= tg.y && y <= tg.y + tg.h) {
+                if (tg.kind === 'mode')  shalim.modeIdx   = (shalim.modeIdx + 1) % SHALIM_MODE_NAMES.length;
+                if (tg.kind === 'ext')   shalim.extension = (shalim.extension + 1) % 3;
+                if (tg.kind === 'bri')   shalim.brightness = shalim.brightness > 0.5 ? 0 : 1;
+                if (tg.kind === 'oct')   shalim.octave    = shalim.octave === 1 ? -1 : shalim.octave + 1;
+                if (tg.kind === 'hold')  {
+                    shalim.hold = !shalim.hold;
+                    if (!shalim.hold && shalim.held < 0) {
+                        // Hold turned off and nothing held → release sustain
+                        shalimReleaseChord(1.2);
+                    }
+                }
+                if (tg.kind === 'arp')   {
+                    shalim.arpMode = !shalim.arpMode;
+                    if (shalim.arpMode) {
+                        // If there was a sustained chord, transition into arpeggio
+                        if (shalim.voice || shalim.held >= 0 || shalim.hold) {
+                            const seed = shalim.held >= 0 ? shalim.held : (shalim.voice ? shalim.voice.padIdx : 0);
+                            shalimStartArp(seed);
+                            shalimReleaseChord(0.4);
+                        }
+                    } else {
+                        // Exit arp → release
+                        shalim.arpPad = -1;
+                        shalim.arpNotes = [];
+                    }
+                }
+                if (shalim.held >= 0 && !shalim.arpMode) shalimStartChord(shalim.held);
+                return;
+            }
+        }
+    }
+    const pad = shalimPadAt(x, y);
+    if (pad < 0) {
+        // Slid off the pad row while dragging
+        if (shalim.held >= 0 && dragging && !shalim.hold) {
+            shalim.held = -1;
+            shalimReleaseChord(1.4);
+        }
+        return;
+    }
+    // In Hold mode, tapping the same pad releases; else switches
+    if (shalim.hold && !dragging && pad === shalim.voice?.padIdx && !shalim.arpMode) {
+        shalim.held = -1;
+        shalimReleaseChord(1.6);
+        return;
+    }
+    if (pad !== shalim.held) {
+        shalim.held = pad;
+        shalim.uniqueChords.add(pad);
+        if (shalim.arpMode) shalimStartArp(pad);
+        else                 shalimStartChord(pad);
+    }
+}
+
+function shalimStartArp(padIdx) {
+    const { bass, notes } = shalimChordFreqs(padIdx);
+    // Build an arpeggio pattern: bass, notes ascending, top note, descending
+    const asc = [bass, ...notes];
+    shalim.arpNotes = asc.concat(notes.slice(0, -1).reverse());
+    shalim.arpStep = 0;
+    shalim.arpStepTimer = 0;
+    shalim.arpPad = padIdx;
+}
+
+function shalimHandleRelease() {
+    if (shalim.arpMode) {
+        // Arp keeps playing until another pad is tapped or arp is turned off
+        return;
+    }
+    if (shalim.held >= 0) {
+        shalim.held = -1;
+        if (!shalim.hold) shalimReleaseChord(2.0);
+    }
+}
+
+function renderShalim(ctx, w, h) {
+    // Warm deep-lavender background with a subtle top glow
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#120824');
+    bg.addColorStop(0.55, '#1A0C30');
+    bg.addColorStop(1, '#0A0418');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    // --- Top bar (title + minimal readout) ---
+    ctx.fillStyle = '#D4A534';
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('SHALIM-KORO', 18, 26);
+    ctx.fillStyle = 'rgba(220,200,240,0.55)';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('canto armonico', 18, 42);
+
+    // Countdown + held seconds on the right
+    const remain = Math.max(0, 1 - shalim.t / SHALIM_DURATION_TICKS);
+    const seconds = Math.floor(shalim.heldFrames / 60);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.ceil(remain * 90)}s · ${seconds}s · ${shalim.uniqueChords.size}/7`, w - 18, 26);
+
+    // Use geometry computed in shalimComputeGeometry (called from touch too)
+    shalimComputeGeometry(w, h);
+    // Label lookups — kinds are in the same order as computeGeometry
+    const labelFor = (kind) => {
+        switch (kind) {
+            case 'mode': return SHALIM_MODE_NAMES[shalim.modeIdx];
+            case 'ext':  return ['triade', '+ 7', '+ 7 · 9'][shalim.extension];
+            case 'bri':  return shalim.brightness > 0.5 ? 'brillante' : 'morbido';
+            case 'oct':  return shalim.octave === 0 ? 'oct · 0' : (shalim.octave > 0 ? 'oct · +' + shalim.octave : 'oct · ' + shalim.octave);
+            case 'hold': return shalim.hold ? '● hold' : '○ hold';
+            case 'arp':  return shalim.arpMode ? '▶ arp' : '  arp';
+        }
+        return kind;
+    };
+    const activeFor = (kind) => {
+        if (kind === 'hold') return shalim.hold;
+        if (kind === 'arp')  return shalim.arpMode;
+        if (kind === 'oct')  return shalim.octave !== 0;
+        if (kind === 'bri')  return shalim.brightness > 0.5;
+        if (kind === 'ext')  return shalim.extension > 0;
+        return false;
+    };
+    for (const t of shalim.toggleRects) {
+        const isActive = activeFor(t.kind);
+        ctx.fillStyle = isActive ? 'rgba(212,165,52,0.20)' : 'rgba(255,255,255,0.04)';
+        ctx.fillRect(t.x, t.y, t.w, t.h);
+        ctx.strokeStyle = isActive ? 'rgba(255,232,153,0.9)' : 'rgba(212,165,52,0.35)';
+        ctx.lineWidth = isActive ? 1.5 : 1;
+        ctx.strokeRect(t.x + 0.5, t.y + 0.5, t.w - 1, t.h - 1);
+        ctx.fillStyle = isActive ? '#FFE899' : 'rgba(255,232,176,0.85)';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labelFor(t.kind), t.x + t.w / 2, t.y + t.h / 2 + 1);
+    }
+    ctx.textBaseline = 'alphabetic';
+
+    // --- Chord pads row (Orchid-style) --- (geometry already computed above)
+    const padCount = shalim.padRects.length;
+    for (let i = 0; i < padCount; i++) {
+        const { x: rx, y: ry, w: padW, h: padH } = shalim.padRects[i];
+
+        const glow = shalim.glow[i];
+        const held = shalim.held === i;
+        // Hue scales across the row like a colour spectrum
+        const hue = (230 + i * 20) % 360;
+
+        // Halo — larger & softer when held
+        if (glow > 0.05) {
+            ctx.save();
+            ctx.globalAlpha = glow * 0.6;
+            const g2 = ctx.createRadialGradient(rx + padW / 2, ry + padH / 2, 4,
+                                                rx + padW / 2, ry + padH / 2, padW * (1 + glow));
+            g2.addColorStop(0, `hsla(${hue},80%,70%,0.9)`);
+            g2.addColorStop(1, 'transparent');
+            ctx.fillStyle = g2;
+            ctx.fillRect(rx - padW, ry - padW, padW * 3, padH + padW * 2);
+            ctx.restore();
+        }
+
+        // Pad body — soft rounded rectangle via layered rects
+        const bodyColor = held
+            ? `hsl(${hue}, 55%, ${36 + glow * 25}%)`
+            : `hsl(${hue}, 30%, ${16 + glow * 8}%)`;
+        ctx.fillStyle = bodyColor;
+        ctx.fillRect(rx, ry, padW, padH);
+
+        // Inner face
+        ctx.fillStyle = held
+            ? `hsl(${hue}, 60%, ${48 + glow * 20}%)`
+            : `hsl(${hue}, 35%, ${24 + glow * 6}%)`;
+        ctx.fillRect(rx + 2, ry + 2, padW - 4, padH - 4);
+
+        // Top highlight line (one pixel)
+        ctx.fillStyle = `hsla(${hue},80%,${held ? 85 : 55}%,${0.45 + glow * 0.45})`;
+        ctx.fillRect(rx + 2, ry + 2, padW - 4, 1);
+        // Bottom shadow line
+        ctx.fillStyle = `rgba(0,0,0,${held ? 0.15 : 0.35})`;
+        ctx.fillRect(rx + 2, ry + padH - 3, padW - 4, 1);
+
+        // Roman numeral — big and centred
+        const label = SHALIM_LABELS[i];
+        ctx.fillStyle = held ? '#FFFDF2' : `hsla(${hue},50%,${72 + glow * 15}%,${0.55 + glow * 0.4})`;
+        const fontSize = Math.min(48, padW * 0.5);
+        ctx.font = `bold ${fontSize}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, rx + padW / 2, ry + padH * 0.42);
+        ctx.textBaseline = 'alphabetic';
+
+        // Held outline
+        if (held || glow > 0.1) {
+            ctx.strokeStyle = `hsla(${hue},85%,80%,${glow})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(rx + 1, ry + 1, padW - 2, padH - 2);
+        }
+
+        // Ascending motes when held (visible "voice")
+        if (held) {
+            for (let k = 0; k < 3; k++) {
+                const phase = (shalim.t * 0.8 + k * 60) % 200;
+                const life = 1 - phase / 200;
+                if (life <= 0) continue;
+                const mx = rx + padW / 2 + Math.sin((shalim.t + k * 10) * 0.06) * padW * 0.25;
+                const my = ry + padH - 8 - phase * 0.9;
+                ctx.globalAlpha = life * 0.8;
+                ctx.fillStyle = `hsl(${hue},85%,85%)`;
+                ctx.fillRect(Math.round(mx), Math.round(my), 3, 3);
+            }
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Hint line on first use
+    if (shalim.uniqueChords.size === 0 && shalim.t < 300) {
+        ctx.fillStyle = 'rgba(212,165,52,0.75)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('tieni premuto un pad — scorri per cambiare accordo', w / 2, h - 8);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// VYTHI-PULSE — step sequencer. 8 steps × 3 tracks (kick, chime, bell).
+// Tap a cell to toggle it; the grid plays in a loop at 90 BPM. 75s total.
+// Score = unique cells activated (encourages composition).
+// ---------------------------------------------------------------------------
+const VYTHI_STEPS = 8;
+const VYTHI_TRACKS = 3;
+const VYTHI_BPM = 90;
+const VYTHI_STEP_SEC = 60 / VYTHI_BPM / 2;   // 8th notes
+const VYTHI_DURATION_TICKS = 75 * 60;
+let vythi = {
+    t: 0,
+    grid: null,
+    step: 0,
+    stepTimer: 0,
+    uniqueToggles: 0,
+};
+
+function vythiInit() {
+    vythi.t = 0; vythi.step = 0; vythi.stepTimer = 0; vythi.uniqueToggles = 0;
+    vythi.grid = Array.from({ length: VYTHI_TRACKS }, () => new Array(VYTHI_STEPS).fill(false));
+    ambStartPad(98);  // G2 pad
+}
+
+function vythiPlayStep() {
+    const ctx = ensureAmbAwake();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    for (let tr = 0; tr < VYTHI_TRACKS; tr++) {
+        if (!vythi.grid[tr][vythi.step]) continue;
+        if (tr === 0) {
+            // Kick — sine thump with pitch drop
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.type = 'sine';
+            o.frequency.setValueAtTime(120, t);
+            o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(0.3, t + 0.005);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+            o.connect(g).connect(_ambMaster);
+            o.start(t); o.stop(t + 0.25);
+        } else if (tr === 1) {
+            // Chime — FM blip in pentatonic C
+            const hz = [523.25, 587.33, 659.25, 784.00][vythi.step % 4];
+            ambPluck(hz, 0.8, 'triangle', 0.14);
+        } else {
+            // Bell — high crystalline sine
+            const hz = [1046.5, 1318.5, 1567.98, 1760.0][vythi.step % 4];
+            ambPluck(hz, 1.2, 'sine', 0.10);
+        }
+    }
+}
+
+function vythiUpdate() {
+    vythi.t++;
+    vythi.stepTimer += 1 / 60;
+    if (vythi.stepTimer >= VYTHI_STEP_SEC) {
+        vythi.stepTimer = 0;
+        vythi.step = (vythi.step + 1) % VYTHI_STEPS;
+        vythiPlayStep();
+    }
+}
+
+function vythiHandleTouch(x, y, dragging, vw, vh) {
+    if (dragging) return;
+    vw = vw || 800; vh = vh || 400;
+    const marginX = 30;
+    const gridW = vw - marginX * 2;
+    const marginY = 80;
+    const gridH = vh * 0.55;
+    if (y < marginY || y > marginY + gridH) return;
+    if (x < marginX || x > marginX + gridW) return;
+    const col = Math.min(VYTHI_STEPS - 1, Math.floor((x - marginX) / (gridW / VYTHI_STEPS)));
+    const row = Math.min(VYTHI_TRACKS - 1, Math.floor((y - marginY) / (gridH / VYTHI_TRACKS)));
+    const was = vythi.grid[row][col];
+    vythi.grid[row][col] = !was;
+    if (!was) vythi.uniqueToggles++;
+    // Audition the cell immediately
+    const saved = vythi.step;
+    vythi.step = col;
+    if (vythi.grid[row][col]) vythiPlayStep();
+    vythi.step = saved;
+}
+
+function renderVythi(ctx, w, h) {
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#081420');
+    bg.addColorStop(1, '#183050');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    // Title
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Pulsi di Luce — 90 BPM', w / 2, 30);
+
+    // Track labels
+    const labels = ['kick', 'chime', 'bell'];
+    const marginX = 30;
+    const gridW = w - marginX * 2;
+    const marginY = 80;
+    const gridH = h * 0.55;
+    const stepW = gridW / VYTHI_STEPS;
+    const trackH = gridH / VYTHI_TRACKS;
+
+    for (let tr = 0; tr < VYTHI_TRACKS; tr++) {
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(labels[tr], marginX - 6, marginY + tr * trackH + trackH / 2 + 4);
+    }
+
+    // Cells
+    for (let tr = 0; tr < VYTHI_TRACKS; tr++) {
+        for (let st = 0; st < VYTHI_STEPS; st++) {
+            const x = marginX + st * stepW + 2;
+            const y = marginY + tr * trackH + 2;
+            const cellW = stepW - 4;
+            const cellH = trackH - 4;
+            const on = vythi.grid[tr][st];
+            const active = vythi.step === st;
+            const hue = [0, 200, 60][tr] + (active ? 0 : 0);
+            const sat = on ? 70 : 12;
+            const light = on ? (active ? 72 : 55) : (active ? 25 : 12);
+            ctx.fillStyle = `hsl(${hue},${sat}%,${light}%)`;
+            ctx.fillRect(x, y, cellW, cellH);
+            ctx.strokeStyle = active ? '#FFFFFF' : 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = active ? 2 : 1;
+            ctx.strokeRect(x, y, cellW, cellH);
+            if (on) {
+                // inner glow pixel
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                ctx.fillRect(x + cellW * 0.4, y + cellH * 0.4, cellW * 0.2, cellH * 0.2);
+            }
+        }
+    }
+
+    // Step indicator (bottom)
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(marginX + vythi.step * stepW, marginY + gridH + 6, stepW - 4, 3);
+
+    // Progress
+    const remain = Math.max(0, 1 - vythi.t / VYTHI_DURATION_TICKS);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.ceil(remain * 75)}s · ${vythi.uniqueToggles} celle`, w - 16, 54);
+}
+
 export const MiniGames = {
     GameType,
 
@@ -655,12 +2042,30 @@ export const MiniGames = {
             case GameType.STAR_JOY: starInit(); break;
             case GameType.TETRIS_KORA: tetInit(); break;
             case GameType.PACMAN_LALI: pacInit(); break;
+            case GameType.KORIMA_HARP: harpInit(); break;
+            case GameType.VITH_BREATH: breathInit(); break;
+            case GameType.THI_SING: thiInit(); break;
+            case GameType.SHALIM_KORO: shalimInit(); break;
+            case GameType.VYTHI_PULSE: vythiInit(); break;
+        }
+        // Duck the stage ambient while a synth/music minigame is running so
+        // the keeper's instrument takes the foreground. Classics (Tetris /
+        // Pac-Lalì) keep the full ambient bed.
+        const synthGames = new Set([
+            GameType.KORIMA_HARP, GameType.VITH_BREATH, GameType.THI_SING,
+            GameType.SHALIM_KORO, GameType.VYTHI_PULSE,
+        ]);
+        if (synthGames.has(type)) {
+            try { SoundEngine.duckAmbient && SoundEngine.duckAmbient(0.08, 700); } catch (_) {}
         }
     },
 
     endGame() {
         if (!_playing) return null;
         _playing = false;
+        // Restore the stage ambient bed whenever a minigame ends (harmless
+        // if we weren't ducked — linearRamp back to 1.0 is a no-op).
+        try { SoundEngine.unduckAmbient && SoundEngine.unduckAmbient(1500); } catch (_) {}
 
         let result;
         switch (_currentGame) {
@@ -744,6 +2149,94 @@ export const MiniGames = {
                     triggersDream: pac.won,
                 };
                 break;
+            case GameType.KORIMA_HARP:
+                ambStopPad();
+                result = {
+                    score: harp.notes,
+                    nashiBonus: Math.min(14, harp.notes * 0.25),
+                    cognitionBonus: Math.min(6, harp.notes * 0.1),
+                    curiosityBonus: Math.min(6, harp.notes * 0.1),
+                    affectionBonus: 6,
+                    miskaBonus: 0,
+                    cosmicBonus: Math.min(14, harp.notes * 0.22),
+                    securityBonus: Math.min(12, harp.notes * 0.18),
+                    mokoCost: -6,                            // restful: restores energy
+                    vocabUnlock: Math.min(2, Math.floor(harp.notes / 12)),
+                    interactionCount: 2,
+                    triggersDream: harp.notes >= 20,
+                };
+                break;
+            case GameType.VITH_BREATH:
+                breathStopVoice();
+                result = {
+                    score: breath.score,
+                    nashiBonus: Math.min(8, breath.score * 0.02),
+                    cognitionBonus: 0,
+                    curiosityBonus: 0,
+                    affectionBonus: Math.min(8, breath.score * 0.015),
+                    miskaBonus: 0,
+                    cosmicBonus: Math.min(14, breath.score * 0.03),
+                    securityBonus: Math.min(20, breath.score * 0.04),
+                    mokoCost: -10,
+                    vocabUnlock: Math.min(2, Math.floor(breath.score / 150)),
+                    interactionCount: 2,
+                    triggersDream: breath.score >= 400,
+                };
+                break;
+            case GameType.THI_SING:
+                thiStopVoice();
+                ambStopPad();
+                result = {
+                    score: thi.notes,
+                    nashiBonus: Math.min(14, thi.notes * 0.15),
+                    cognitionBonus: Math.min(8, thi.notes * 0.08),
+                    curiosityBonus: Math.min(10, thi.notes * 0.1),
+                    affectionBonus: 4,
+                    miskaBonus: 0,
+                    cosmicBonus: Math.min(12, thi.notes * 0.12),
+                    securityBonus: Math.min(6, thi.notes * 0.06),
+                    mokoCost: -4,
+                    vocabUnlock: Math.min(2, Math.floor(thi.notes / 20)),
+                    interactionCount: 2,
+                    triggersDream: thi.notes >= 30,
+                };
+                break;
+            case GameType.SHALIM_KORO: {
+                shalimReleaseChord(0.3);
+                const heldSec = Math.floor(shalim.heldFrames / 60);
+                result = {
+                    score: heldSec,
+                    nashiBonus: Math.min(14, heldSec * 0.25),
+                    cognitionBonus: Math.min(10, heldSec * 0.2),
+                    curiosityBonus: Math.min(6, shalim.uniqueChords.size * 0.8),
+                    affectionBonus: 4,
+                    miskaBonus: 0,
+                    cosmicBonus: Math.min(14, heldSec * 0.22),
+                    securityBonus: Math.min(10, heldSec * 0.15),
+                    mokoCost: -5,
+                    vocabUnlock: Math.min(2, Math.floor(shalim.uniqueChords.size / 3)),
+                    interactionCount: 2,
+                    triggersDream: heldSec >= 40,
+                };
+                break;
+            }
+            case GameType.VYTHI_PULSE:
+                ambStopPad();
+                result = {
+                    score: vythi.uniqueToggles,
+                    nashiBonus: Math.min(10, vythi.uniqueToggles * 0.4),
+                    cognitionBonus: Math.min(10, vythi.uniqueToggles * 0.4),
+                    curiosityBonus: Math.min(12, vythi.uniqueToggles * 0.5),
+                    affectionBonus: 2,
+                    miskaBonus: 0,
+                    cosmicBonus: Math.min(5, vythi.uniqueToggles * 0.2),
+                    securityBonus: 0,
+                    mokoCost: -2,
+                    vocabUnlock: Math.min(2, Math.floor(vythi.uniqueToggles / 8)),
+                    interactionCount: 2,
+                    triggersDream: vythi.uniqueToggles >= 16,
+                };
+                break;
         }
         return result;
     },
@@ -760,6 +2253,11 @@ export const MiniGames = {
             case GameType.STAR_JOY: starUpdate(); break;
             case GameType.TETRIS_KORA: tetUpdate(); break;
             case GameType.PACMAN_LALI: pacUpdate(); break;
+            case GameType.KORIMA_HARP: harpUpdate(); break;
+            case GameType.VITH_BREATH: breathUpdate(); break;
+            case GameType.THI_SING: thiUpdate(); break;
+            case GameType.SHALIM_KORO: shalimUpdate(); break;
+            case GameType.VYTHI_PULSE: vythiUpdate(); break;
         }
     },
 
@@ -771,7 +2269,20 @@ export const MiniGames = {
             case GameType.STAR_JOY: starHandleTouch(x, y); break;
             case GameType.TETRIS_KORA: tetHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
             case GameType.PACMAN_LALI: pacHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
+            case GameType.KORIMA_HARP: harpHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
+            case GameType.VITH_BREATH: breathHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
+            case GameType.THI_SING: thiHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
+            case GameType.SHALIM_KORO: shalimHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
+            case GameType.VYTHI_PULSE: vythiHandleTouch(x, y, dragging, vw || 800, vh || 400); break;
         }
+    },
+
+    handleRelease() {
+        if (!_playing) return;
+        if (_currentGame === GameType.THI_SING) thiHandleRelease();
+        if (_currentGame === GameType.VITH_BREATH) breathHandleRelease && breathHandleRelease();
+        if (_currentGame === GameType.TETRIS_KORA) tetHandleRelease();
+        if (_currentGame === GameType.SHALIM_KORO) shalimHandleRelease();
     },
 
     /** Keyboard handler — returns true if key consumed. Call from screens.js */
@@ -791,6 +2302,11 @@ export const MiniGames = {
             case GameType.STAR_JOY: return star.sessionComplete;
             case GameType.TETRIS_KORA: return tet.over && tet.overTimer > 360;
             case GameType.PACMAN_LALI: return (pac.over || pac.won) && pac.overTimer > 360;
+            case GameType.KORIMA_HARP: return harp.t >= HARP_DURATION_TICKS;
+            case GameType.VITH_BREATH: return breath.t >= BREATH_DURATION_TICKS;
+            case GameType.THI_SING: return thi.t >= THI_DURATION_TICKS;
+            case GameType.SHALIM_KORO: return shalim.t >= SHALIM_DURATION_TICKS;
+            case GameType.VYTHI_PULSE: return vythi.t >= VYTHI_DURATION_TICKS;
         }
         return false;
     },
@@ -802,6 +2318,11 @@ export const MiniGames = {
             case GameType.STAR_JOY: return star.score;
             case GameType.TETRIS_KORA: return tet.score;
             case GameType.PACMAN_LALI: return pac.score;
+            case GameType.KORIMA_HARP: return harp.notes;
+            case GameType.VITH_BREATH: return breath.score;
+            case GameType.THI_SING: return thi.notes;
+            case GameType.SHALIM_KORO: return Math.floor(shalim.heldFrames / 60);
+            case GameType.VYTHI_PULSE: return vythi.uniqueToggles;
         }
         return 0;
     },
@@ -816,6 +2337,11 @@ export const MiniGames = {
             case GameType.STAR_JOY: renderStar(ctx, w, h); break;
             case GameType.TETRIS_KORA: renderTetris(ctx, w, h); break;
             case GameType.PACMAN_LALI: renderPacman(ctx, w, h); break;
+            case GameType.KORIMA_HARP: renderHarp(ctx, w, h); break;
+            case GameType.VITH_BREATH: renderBreath(ctx, w, h); break;
+            case GameType.THI_SING: renderThi(ctx, w, h); break;
+            case GameType.SHALIM_KORO: renderShalim(ctx, w, h); break;
+            case GameType.VYTHI_PULSE: renderVythi(ctx, w, h); break;
         }
     },
 };
@@ -824,11 +2350,14 @@ export const MiniGames = {
 function renderTetris(ctx, w, h) {
     ctx.fillStyle = '#0A1828';
     ctx.fillRect(0, 0, w, h);
-    const fieldW = Math.min(w * 0.55, h * 0.6);
-    const cell = Math.floor(fieldW / TET_COLS);
+    // Cell size must make the whole 10×20 grid fit inside the canvas with
+    // room for the HUD. Constraints: cell * TET_COLS ≤ w * 0.55 (leave HUD on
+    // the right) AND cell * TET_ROWS ≤ h * 0.92.
+    const cell = Math.max(8, Math.floor(Math.min(w * 0.55 / TET_COLS, h * 0.92 / TET_ROWS)));
     const gridW = cell * TET_COLS, gridH = cell * TET_ROWS;
-    const ox = Math.floor((w - gridW) / 2) - Math.floor(w * 0.05);
-    const oy = Math.floor((h - gridH) / 2);
+    const hudW = Math.min(140, w - gridW - 40);
+    const ox = Math.max(12, Math.floor((w - gridW - hudW) / 2));
+    const oy = Math.max(8, Math.floor((h - gridH) / 2));
 
     // Frame
     ctx.strokeStyle = '#3ECFCF';
@@ -849,6 +2378,22 @@ function renderTetris(ctx, w, h) {
                 ctx.fillRect(ox + x * cell, oy + y * cell, cell - 1, cell - 1);
             }
         }
+    }
+    // Ghost piece — where the current piece will land if hard-dropped
+    if (tet.piece != null && !tet.over) {
+        let gy = tet.py;
+        while (!tetCollides(tet.piece, tet.rot, tet.px, gy + 1)) gy++;
+        const sh = TET_SHAPES[tet.piece];
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = sh.color;
+        ctx.lineWidth = 1.5;
+        for (const c of tetShapeCells(tet.piece, tet.rot)) {
+            const gx = tet.px + c.x, gyy = gy + c.y;
+            if (gyy < 0) continue;
+            ctx.strokeRect(ox + gx * cell + 1.5, oy + gyy * cell + 1.5, cell - 4, cell - 4);
+        }
+        ctx.restore();
     }
     // Current piece
     if (tet.piece != null) {
@@ -943,6 +2488,32 @@ function renderPacman(ctx, w, h) {
             }
         }
     }
+    // Fruit bonus (blinks, pulses)
+    if (pac.fruit) {
+        const fx = ox + pac.fruit.x * cell + cell / 2;
+        const fy = oy + pac.fruit.y * cell + cell / 2;
+        const pulse = Math.sin(pac.frame * 0.3) * 0.15 + 1;
+        const expiring = pac.fruit.expiresAt - pac.frame < 120;
+        if (!expiring || Math.sin(pac.frame * 0.8) > 0) {
+            const colors = { kora: '#E05050', nashi: '#FFD86A', vythi: '#80E8C0' };
+            ctx.fillStyle = colors[pac.fruit.kind] || '#FFD86A';
+            ctx.beginPath();
+            ctx.arc(fx, fy, (cell * 0.35) * pulse, 0, Math.PI * 2);
+            ctx.fill();
+            // Stem
+            ctx.fillStyle = '#3A5A2E';
+            ctx.fillRect(fx - 1, fy - cell * 0.4, 2, 3);
+            // Highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.fillRect(fx - cell * 0.2, fy - cell * 0.2, 2, 2);
+            // Value text above
+            ctx.fillStyle = '#FFE899';
+            ctx.font = 'bold 9px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('+' + pac.fruit.value, fx, fy - cell * 0.55);
+        }
+    }
+
     // Pet
     const pxx = ox + pac.pet.x * cell + cell / 2;
     const pyy = oy + pac.pet.y * cell + cell / 2;

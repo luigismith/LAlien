@@ -159,6 +159,7 @@
             <div class="diary-header">
                 <button class="btn-back" id="btn-diary-back">&larr;</button>
                 <h2 id="diary-title">Diario</h2>
+                <button id="btn-diary-pdf" class="btn-small" title="Esporta come reliquia PDF">📜 Reliquia PDF</button>
             </div>
             <div id="diary-entries"></div>
         </div>
@@ -182,6 +183,23 @@
                 <h2 id="graveyard-title">Cimitero dei Ricordi</h2>
             </div>
             <div id="graveyard-entries"></div>
+        </div>
+    </div>
+
+    <!-- Reliquiario — collectibles screen -->
+    <div id="screen-relics" class="screen-overlay hidden">
+        <div class="relics-container">
+            <div class="relics-header">
+                <button class="btn-back" id="btn-relics-back">&larr;</button>
+                <h2>Reliquiario</h2>
+            </div>
+            <div class="relics-tabs">
+                <button class="relics-tab active" data-tab="dreams">Sogni</button>
+                <button class="relics-tab" data-tab="polaroids">Polaroid</button>
+                <button class="relics-tab" data-tab="stones">Pietre</button>
+                <button class="relics-tab" data-tab="constellations">Costellazioni</button>
+            </div>
+            <div class="relics-body" id="relics-body"></div>
         </div>
     </div>
 
@@ -244,19 +262,25 @@
                 <p class="setup-hint">Fai un account gratuito su <a href="https://openweathermap.org/api" target="_blank" rel="noopener">openweathermap.org</a>. Senza chiave, il cielo resta sereno ma alba/tramonto sono comunque reali se concedi la geolocalizzazione.</p>
             </div>
             <div class="settings-group">
-                <label>Time multiplier (debug)</label>
+                <label>Velocità del tempo (solo con app aperta)</label>
                 <select id="settings-time-mult">
-                    <option value="1">1x (real time)</option>
-                    <option value="60">60x (1 min = 1 hour)</option>
-                    <option value="360">360x (1 min = 6 hours)</option>
-                    <option value="3600">3600x (1 sec = 1 hour)</option>
+                    <option value="1">1x (tempo reale)</option>
+                    <option value="60">60x (1 min = 1 h)</option>
+                    <option value="360">360x (1 min = 6 h)</option>
+                    <option value="3600">3600x (1 s = 1 h)</option>
                 </select>
+                <p class="setup-hint" style="margin-top:6px">Con app in background o chiusa il tempo scorre sempre a 1x, indipendentemente da questa impostazione.</p>
             </div>
             <div class="settings-group">
                 <label class="toggle-row">
                     <input type="checkbox" id="settings-sfx-toggle" checked>
                     <span>Audio ed effetti sonori</span>
                 </label>
+                <div class="volume-row">
+                    <span class="volume-icon" id="settings-volume-icon">🔊</span>
+                    <input type="range" id="settings-volume-slider" min="0" max="100" value="100" step="1">
+                    <span id="settings-volume-value" class="volume-value">100%</span>
+                </div>
                 <div class="audio-diag">
                     <button class="btn-small" id="btn-audio-test">🔊 Prova audio</button>
                     <span id="audio-diag-text" class="audio-diag-text">—</span>
@@ -299,6 +323,7 @@
                 <button class="btn-small" id="btn-manual-nav">❔ Manuale del Custode</button>
                 <button class="btn-small" id="btn-diary-nav">📖 Diario del Lalien</button>
                 <button class="btn-small" id="btn-lexicon-nav">📚 Lessico Lalien</button>
+                <button class="btn-small" id="btn-relics-nav">🎐 Reliquiario</button>
                 <button class="btn-small" id="btn-graveyard-nav">⚰ Cimitero dei Ricordi</button>
             </div>
         </div>
@@ -323,21 +348,6 @@
                 <h2>Rituali di legame</h2>
             </div>
             <div class="minigame-select-grid">
-                <button class="btn-game-select" data-game="echo">
-                    <span class="game-icon">&#9834;</span>
-                    <span class="game-name">Thishi-Revosh</span>
-                    <span class="game-desc">Memoria dell'Eco</span>
-                </button>
-                <button class="btn-game-select" data-game="clean">
-                    <span class="game-icon">&#10024;</span>
-                    <span class="game-name">Miska-Vythi</span>
-                    <span class="game-desc">Pulizia di Luce</span>
-                </button>
-                <button class="btn-game-select" data-game="star">
-                    <span class="game-icon">&#9733;</span>
-                    <span class="game-name">Selath-Nashi</span>
-                    <span class="game-desc">Gioia Stellare</span>
-                </button>
                 <button class="btn-game-select" data-game="tetris">
                     <span class="game-icon">&#9638;</span>
                     <span class="game-name">Kòra-Tris</span>
@@ -347,6 +357,31 @@
                     <span class="game-icon">&#9787;</span>
                     <span class="game-name">Pac-Lalì</span>
                     <span class="game-desc">Labirinto di Morak</span>
+                </button>
+                <button class="btn-game-select" data-game="harp">
+                    <span class="game-icon">&#127929;</span>
+                    <span class="game-name">Korìma-Celeste</span>
+                    <span class="game-desc">Arpa pentatonica — suona liberamente</span>
+                </button>
+                <button class="btn-game-select" data-game="breath">
+                    <span class="game-icon">&#127765;</span>
+                    <span class="game-name">Vith-Ondi</span>
+                    <span class="game-desc">Respiro guidato — tieni premuto</span>
+                </button>
+                <button class="btn-game-select" data-game="thi-sing">
+                    <span class="game-icon">&#127928;</span>
+                    <span class="game-name">Thi-Sing</span>
+                    <span class="game-desc">Theremin cosmico — trascina il dito</span>
+                </button>
+                <button class="btn-game-select" data-game="shalim">
+                    <span class="game-icon">&#127911;</span>
+                    <span class="game-name">Shalim-Koro</span>
+                    <span class="game-desc">Componi accordi</span>
+                </button>
+                <button class="btn-game-select" data-game="vythi">
+                    <span class="game-icon">&#127925;</span>
+                    <span class="game-name">Vythi-Pulse</span>
+                    <span class="game-desc">Sequencer a 8 passi</span>
                 </button>
             </div>
         </div>

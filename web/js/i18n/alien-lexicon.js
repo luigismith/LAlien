@@ -61,6 +61,17 @@ export const AlienLexicon = {
         if (_discovered.has(lower)) return false;
         _discovered.add(lower);
         _discoveredList.push({ word: lower, discoveredAt: Date.now(), source });
+        // Fire off the discovery event — the game-loop listens and applies the
+        // need bursts. Dynamic import avoids a circular dep with the engine.
+        try {
+            import('../engine/events.js').then(m => {
+                m.Events.emit('lexicon-word-discovered', {
+                    word: lower,
+                    source,
+                    total: _discovered.size,
+                });
+            }).catch(() => {});
+        } catch (_) {}
         return true;
     },
 

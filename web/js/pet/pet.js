@@ -133,7 +133,7 @@ export const Pet = {
         Activity.autoDetect(this);
         Activity.tick(this, timeMultiplier);
         const actMult = Activity.getDecayMultiplier(this);
-        Needs.decay(this.needs, timeMultiplier * actMult, this.stage);
+        Needs.decay(this.needs, timeMultiplier * actMult, this.stage, 1, this.vocabularySize || 0);
 
         // Pathological tracking
         if (Needs.isMorak(this.needs)) {

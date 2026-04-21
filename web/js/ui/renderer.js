@@ -23,12 +23,34 @@ let _scaleX = 1, _scaleY = 1;
 let _tick = 0;
 let _interactionsInit = false;
 
-// Persistent stars (generated once)
+// Persistent stars (regenerated only on background-size change)
 let _stars = null;
+let _starsForW = 0, _starsForH = 0;
+
+// Persistent crystals — positions captured per render pass for hit-testing.
+// Stored in bg-res coords; converted to full-res at hit-test time.
+let _crystals = [];
+// Persistent fireflies — stateful so we can hit-test them against taps.
+// Positions are in FULL-res canvas coords (not the bg low-res).
+let _fireflies = [];
+let _fireflyNextRespawnAt = 0;
+// Tap sparkle overlays drawn on full-res canvas.
+let _envSparkles = [];
+// Live celestial bodies for hit-testing (sun by day, moon at night).
+let _celestial = null;  // { kind: 'sun'|'moon', x, y, r } in full-res coords
 let _nebulaGrad = null;
+
+// Pixel-art downscale factor — the entire background is rendered into an
+// offscreen canvas at 1/PIXEL_SCALE resolution and upscaled with nearest-
+// neighbour sampling so the sky, ground, crystals and weather all share the
+// same chunky pixel-art look as the pet sprites.
+const PIXEL_SCALE = 3;
+let _bgCanvas = null;
+let _bgCtx = null;
 
 function initStars(w, h) {
     _stars = [];
+    _starsForW = w; _starsForH = h;
     for (let i = 0; i < 120; i++) {
         _stars.push({
             x: Math.random() * w,
@@ -128,17 +150,144 @@ function drawBackground(ctx, w, h, tick, pet) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Daylight warm wash overlay
-    if (dayLight > 0.1) {
+    // Daytime sky — full-alpha coverage past mid-morning so sunny days
+    // actually LOOK sunny instead of bleeding dark cosmic colours through.
+    if (dayLight > 0.12) {
         ctx.save();
-        ctx.globalAlpha = dayLight * 0.12;
-        const warmGrad = ctx.createRadialGradient(w * 0.5, h * 0.1, 10, w * 0.5, h * 0.5, h * 0.8);
-        warmGrad.addColorStop(0, '#FFE8A0');
-        warmGrad.addColorStop(0.5, '#D4A534');
-        warmGrad.addColorStop(1, 'transparent');
-        ctx.fillStyle = warmGrad;
+        // Ramp to full opacity quickly: 50% of dayLight → 100% alpha
+        ctx.globalAlpha = Math.min(1, dayLight * 2.0);
+        const wCond = (typeof Weather !== 'undefined') ? Weather.get() : { condition: 'clear' };
+        const cloudy = wCond.clouds > 65;
+        let top, mid, bottom;
+        if (wCond.condition === 'clouds' || cloudy) {
+            top = '#7C8A9E'; mid = '#A0ADBF'; bottom = '#C8D0DC';
+        } else if (wCond.condition === 'rain' || wCond.condition === 'thunder') {
+            top = '#3C4656'; mid = '#5A6678'; bottom = '#7A8494';
+        } else if (wCond.condition === 'snow') {
+            top = '#A0B0C0'; mid = '#C8D4E0'; bottom = '#E8EEF4';
+        } else if (wCond.condition === 'mist') {
+            top = '#B0BBC6'; mid = '#CDD5DD'; bottom = '#E4E9ED';
+        } else {
+            // Clear — vivid sunny blue with a bright bottom
+            top = '#2E7BC8'; mid = '#5FB0E4'; bottom = '#BEE8F8';
+        }
+        const skyG = ctx.createLinearGradient(0, 0, 0, h);
+        skyG.addColorStop(0,    top);
+        skyG.addColorStop(0.55, mid);
+        skyG.addColorStop(1,    bottom);
+        ctx.fillStyle = skyG;
         ctx.fillRect(0, 0, w, h);
         ctx.restore();
+
+        // Sun position: true arc from horizon (sunrise) to zenith (noon) and
+        // back down to horizon (sunset). Visible also at dawn/dusk so the
+        // keeper sees it low on the horizon in late afternoon / early evening.
+        if (phase !== 'night' && wCond.condition !== 'thunder') {
+            const sun = Environment.getSunTimes(now);
+            let arc = 0.5;
+            if (sun.sunrise && sun.sunset) {
+                const span = sun.sunset.getTime() - sun.sunrise.getTime();
+                const t = (now.getTime() - sun.sunrise.getTime()) / span;
+                arc = Math.max(-0.08, Math.min(1.08, t));
+            }
+            const horizonY = Math.floor(h * 0.80);
+            const apexY    = Math.floor(h * 0.10);
+            // True parabolic arc: sin(arc*π) is 0 at sunrise/sunset, 1 at noon
+            const rise = Math.max(0, Math.sin(arc * Math.PI));
+            const sunX = Math.floor(arc * w);
+            const sunY = Math.floor(horizonY - rise * (horizonY - apexY));
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, 1.1 * dayLight) * (wCond.condition === 'clouds' ? 0.55 : 1);
+            // Big pixel-art sun — crisp concentric rings, no gaussian glow.
+            const r = Math.max(6, Math.round(h * 0.028));
+            // Soft outer corona (one ring of dim pixels — not a gradient)
+            ctx.globalAlpha *= 1;
+            ctx.fillStyle = 'rgba(255,216,106,0.35)';
+            ctx.beginPath(); ctx.arc(sunX, sunY, r + 4, 0, Math.PI * 2); ctx.fill();
+            // Outer rim (warm orange)
+            ctx.fillStyle = '#F5A642';
+            ctx.beginPath(); ctx.arc(sunX, sunY, r + 2, 0, Math.PI * 2); ctx.fill();
+            // Mid (golden)
+            ctx.fillStyle = '#FFD86A';
+            ctx.beginPath(); ctx.arc(sunX, sunY, r + 1, 0, Math.PI * 2); ctx.fill();
+            // Inner disc (bright)
+            ctx.fillStyle = '#FFF4B4';
+            ctx.beginPath(); ctx.arc(sunX, sunY, r - 1, 0, Math.PI * 2); ctx.fill();
+            // Core highlight
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath(); ctx.arc(sunX - r * 0.3, sunY - r * 0.3, Math.max(1, r * 0.25), 0, Math.PI * 2); ctx.fill();
+            // Eight short rays (1-2 px blocks, pixel-art spokes)
+            ctx.fillStyle = '#FFD86A';
+            for (let a = 0; a < 8; a++) {
+                const ang = a * Math.PI / 4;
+                const rx = Math.round(sunX + Math.cos(ang) * (r + 5));
+                const ry = Math.round(sunY + Math.sin(ang) * (r + 5));
+                ctx.fillRect(rx - 1, ry - 1, 2, 2);
+            }
+            // When low (late afternoon / evening) the sun takes a warmer hue
+            if (rise < 0.35) {
+                ctx.globalCompositeOperation = 'source-atop';
+                ctx.fillStyle = 'rgba(255,120,60,0.28)';
+                ctx.beginPath(); ctx.arc(sunX, sunY, r + 2, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+            // Store the sun position (bg-coords) for hit-testing
+            _celestial = { kind: 'sun', x: sunX, y: sunY, r: r + 5 };
+        } else {
+            _celestial = null;
+        }
+
+        // --- Moon at night (new) ---
+        if (phase === 'night' && wCond.condition !== 'thunder') {
+            const nowMs = now.getTime();
+            // Monthly phase (synodic month ≈ 29.53 days)
+            const synodic = 29.53 * 86400 * 1000;
+            const refNew = Date.UTC(2000, 0, 6);    // known new moon
+            const mp = ((nowMs - refNew) % synodic) / synodic;  // 0..1
+            // Arc across the night sky from east to west (very simplified)
+            // Night fraction elapsed
+            const sun = Environment.getSunTimes(now);
+            let arc = 0.5;
+            if (sun && sun.sunset && sun.sunrise) {
+                const dayAgo = new Date(now.getTime() - 24 * 3600 * 1000);
+                const sr = sun.sunset.getTime();                 // tonight's sunset
+                const tomorrowSr = Environment.getSunTimes(new Date(now.getTime() + 24 * 3600 * 1000)).sunrise;
+                const srNext = tomorrowSr ? tomorrowSr.getTime() : sr + 10 * 3600 * 1000;
+                const span = srNext - sr;
+                const t = (nowMs - sr) / span;
+                if (t >= 0 && t <= 1) arc = t;
+            }
+            const horizonY = Math.floor(h * 0.82);
+            const apexY    = Math.floor(h * 0.14);
+            const rise = Math.max(0.08, Math.sin(arc * Math.PI));
+            const moonX = Math.floor(arc * w);
+            const moonY = Math.floor(horizonY - rise * (horizonY - apexY));
+            const mr = Math.max(5, Math.round(h * 0.022));
+            ctx.save();
+            // Soft halo
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = 'rgba(220,230,255,0.5)';
+            ctx.beginPath(); ctx.arc(moonX, moonY, mr + 3, 0, Math.PI * 2); ctx.fill();
+            // Full moon base
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#E8ECF6';
+            ctx.beginPath(); ctx.arc(moonX, moonY, mr, 0, Math.PI * 2); ctx.fill();
+            // Phase shadow: subtract a circle offset based on mp
+            // mp=0 new, mp=0.5 full, mp=0.25 first quarter, 0.75 third
+            const shadowOffset = Math.cos(mp * Math.PI * 2) * mr * 1.2;
+            if (Math.abs(shadowOffset) > 0.5) {
+                ctx.fillStyle = '#0A0F20';
+                ctx.beginPath(); ctx.arc(moonX + shadowOffset, moonY, mr + 1, 0, Math.PI * 2); ctx.fill();
+            }
+            // Craters
+            ctx.fillStyle = '#B8BDCF';
+            ctx.beginPath(); ctx.arc(moonX - mr * 0.3, moonY - mr * 0.2, 1.5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(moonX + mr * 0.2, moonY + mr * 0.3, 1.2, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            _celestial = { kind: 'moon', x: moonX, y: moonY, r: mr + 4 };
+        } else if (phase === 'night') {
+            _celestial = null;
+        }
     }
 
     // Dawn / dusk horizon blaze — vivid orange-pink strip where the sun is
@@ -210,7 +359,7 @@ function drawBackground(ctx, w, h, tick, pet) {
     ctx.restore();
 
     // Stars (hidden during day, faded at dawn/dusk)
-    if (!_stars) initStars(w, h);
+    if (!_stars || _starsForW !== w || _starsForH !== h) initStars(w, h);
     if (starVis > 0.03) for (const s of _stars) {
         const twinkle = Math.sin(tick * 0.008 * s.speed + s.phase);
         const brightness = (0.35 + twinkle * 0.4) * starVis;
@@ -369,6 +518,7 @@ function drawBackground(ctx, w, h, tick, pet) {
     // Crystal growths on the ground (pixel-art alien vegetation that pulses)
     ctx.save();
     const crystalSeed = petHue * 7 + 42;
+    _crystals = [];
     for (let i = 0; i < 12; i++) {
         const cx = ((crystalSeed + i * 73) % w);
         const baseY = groundY + 2;
@@ -376,6 +526,9 @@ function drawBackground(ctx, w, h, tick, pet) {
         const pulse = Math.sin(tick * 0.015 + i * 0.9) * 2;
         const crystalH = h1 + pulse;
         const hue = (petHue + i * 30) % 360;
+        // Record for hit-test: centre on the crystal's mid-height, radius
+        // covers the whole spike.
+        _crystals.push({ id: i, x: cx, y: baseY - crystalH / 2, r: Math.max(crystalH / 2 + 6, 12), hue });
 
         ctx.globalAlpha = 0.35 + Math.sin(tick * 0.02 + i) * 0.15;
         ctx.fillStyle = `hsl(${hue},70%,50%)`;
@@ -403,32 +556,54 @@ function drawBackground(ctx, w, h, tick, pet) {
     }
     ctx.restore();
 
-    // Fireflies / light sprites near the ground (alive ambient creatures)
+    // Fireflies — stateful (so they can be tapped). Positions stored at the
+    // RATIO space (0..1) and mapped per-frame to the current background size,
+    // so hit-testing in full-res (done later) can reuse them by simple scale.
+    if (_fireflies.length === 0 && _fireflyNextRespawnAt <= tick) {
+        for (let i = 0; i < 10; i++) {
+            _fireflies.push({
+                id: tick + i,
+                rx: (i * 0.067 + 0.05) % 1,           // 0..1 canvas-width
+                ry: 0.78 - (i * 11 % 40) / h,         // near ground
+                phase: Math.random() * Math.PI * 2,
+                hue: (petHue + 60 + i * 40) % 360,
+                caught: 0,                            // 0..1 flare animation when tapped
+                alive: true,
+            });
+        }
+    }
     ctx.save();
-    for (let i = 0; i < 10; i++) {
-        const phase = tick * 0.008 + i * 2.3;
-        const fx = (i * 67 + Math.sin(phase) * 60 + tick * 0.02 * (0.3 + (i % 3) * 0.15)) % w;
-        const fy = groundY - 15 - (i * 11 % 40) + Math.sin(phase * 1.4) * 10;
-        const blink = Math.sin(phase * 3 + i * 1.7);
-        if (blink < -0.2) continue;  // off phase = invisible
+    for (const f of _fireflies) {
+        if (!f.alive) continue;
+        f.phase += 0.008;
+        // Live full-canvas coords (for rendering & hit-testing)
+        const fx = (f.rx * w + Math.sin(f.phase) * 60 + tick * 0.02) % w;
+        const fy = groundY - 15 - f.ry * 40 + Math.sin(f.phase * 1.4) * 10;
+        f.x = fx; f.y = fy;
+        const blink = Math.sin(f.phase * 3 + f.hue);
+        if (blink < -0.2 && !f.caught) continue;
 
-        const alpha = Math.max(0, blink * 0.6);
-        const hue = (petHue + 60 + i * 40) % 360;
-
-        // Soft glow
+        const alpha = f.caught > 0 ? f.caught : Math.max(0, blink * 0.6);
         ctx.globalAlpha = alpha * 0.4;
-        const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, 8);
-        fg.addColorStop(0, `hsl(${hue},80%,70%)`);
+        const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, 8 + f.caught * 14);
+        fg.addColorStop(0, `hsl(${f.hue},80%,70%)`);
         fg.addColorStop(1, 'transparent');
         ctx.fillStyle = fg;
-        ctx.fillRect(fx - 8, fy - 8, 16, 16);
-
-        // Core pixel
+        ctx.fillRect(fx - 10, fy - 10, 22, 22);
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = `hsl(${hue},90%,85%)`;
+        ctx.fillStyle = `hsl(${f.hue},90%,85%)`;
         ctx.fillRect(Math.floor(fx), Math.floor(fy), 2, 2);
+        if (f.caught > 0) {
+            f.caught = Math.max(0, f.caught - 0.05);
+            if (f.caught === 0) f.alive = false;
+        }
     }
     ctx.restore();
+    // Schedule respawn after all fireflies fade out (5-8s later)
+    if (_fireflies.length > 0 && _fireflies.every(f => !f.alive)) {
+        _fireflies = [];
+        _fireflyNextRespawnAt = tick + 300 + Math.random() * 200;
+    }
 
     // Environmental grime when the pet has been dirty for a while —
     // dark patches on the ground + floating dust motes around the canvas.
@@ -1754,6 +1929,52 @@ function drawDesireBubble(ctx, cx, cy, tick, desire) {
 export const Renderer = {
     setScale(sx, sy) { _scaleX = sx; _scaleY = sy; },
 
+    /** Hit-test environmental elements (fireflies, sun, moon) against a
+     *  canvas-space tap. Returns { kind, id?, x, y } or null.
+     *  Input coords are in FULL-res canvas space; internally converted
+     *  to the low-res bg space where these entities are drawn. */
+    hitTestEnvironment(x, y) {
+        if (!_canvas || !_bgCanvas) return null;
+        const sx = _bgCanvas.width  / _canvas.width;
+        const sy = _bgCanvas.height / _canvas.height;
+        const bx = x * sx, by = y * sy;
+        // Celestial (most prominent) first
+        if (_celestial) {
+            const dx = bx - _celestial.x, dy = by - _celestial.y;
+            if (dx * dx + dy * dy <= _celestial.r * _celestial.r) {
+                return { kind: _celestial.kind, x, y };
+            }
+        }
+        // Fireflies — larger hit radius than the visual so they're catchable
+        for (const f of _fireflies) {
+            if (!f.alive || f.caught > 0) continue;
+            const dx = bx - f.x, dy = by - f.y;
+            if (dx * dx + dy * dy <= 10 * 10) {
+                return { kind: 'firefly', id: f.id, x, y };
+            }
+        }
+        // Crystals on the ground
+        for (const c of _crystals) {
+            const dx = bx - c.x, dy = by - c.y;
+            if (dx * dx + dy * dy <= c.r * c.r) {
+                return { kind: 'crystal', id: c.id, hue: c.hue, x, y };
+            }
+        }
+        return null;
+    },
+
+    /** Mark a firefly as caught (plays its flare-out animation) */
+    catchFirefly(id) {
+        const f = _fireflies.find(fl => fl.id === id);
+        if (f) f.caught = 1;
+    },
+
+    /** Register a sparkle overlay at (x, y) for tap feedback */
+    sparkleAt(x, y, hue = 60) {
+        _envSparkles.push({ x, y, hue, life: 1 });
+    },
+
+
     render(pet, gameState) {
         if (!_canvas) {
             _canvas = document.getElementById('game-canvas');
@@ -1772,8 +1993,24 @@ export const Renderer = {
         // Clear
         _ctx.clearRect(0, 0, w, h);
 
-        // Background with ground
-        const groundY = drawBackground(_ctx, w, h, _tick, pet);
+        // Background is drawn into a low-resolution offscreen buffer and
+        // upscaled with nearest-neighbour sampling so the whole environment
+        // (sky, nebula, ground, crystals, fireflies, aurora) reads as
+        // pixel art — consistent with the pet sprites on top of it.
+        const bgW = Math.max(64, Math.floor(w / PIXEL_SCALE));
+        const bgH = Math.max(48, Math.floor(h / PIXEL_SCALE));
+        if (!_bgCanvas || _bgCanvas.width !== bgW || _bgCanvas.height !== bgH) {
+            _bgCanvas = document.createElement('canvas');
+            _bgCanvas.width = bgW;
+            _bgCanvas.height = bgH;
+            _bgCtx = _bgCanvas.getContext('2d');
+            _bgCtx.imageSmoothingEnabled = false;
+        }
+        const groundYLow = drawBackground(_bgCtx, bgW, bgH, _tick, pet);
+        _ctx.imageSmoothingEnabled = false;
+        _ctx.drawImage(_bgCanvas, 0, 0, bgW, bgH, 0, 0, w, h);
+        _ctx.imageSmoothingEnabled = true;
+        const groundY = groundYLow * (h / bgH);
 
         // Keep Items aware of current canvas size (for wander targeting)
         Items.setStage(w, h);
@@ -1836,6 +2073,28 @@ export const Renderer = {
 
         // Emotive pixel-art overlays (particles, thinking, flash)
         EmotiveEffects.draw(_ctx, liveCx, liveCy, _tick);
+
+        // Environment-tap sparkles (fireflies caught, sun/moon touched)
+        if (_envSparkles.length) {
+            _ctx.save();
+            _envSparkles = _envSparkles.filter(s => s.life > 0);
+            for (const s of _envSparkles) {
+                _ctx.globalAlpha = s.life;
+                _ctx.fillStyle = `hsl(${s.hue},85%,75%)`;
+                // Radial pixel burst
+                for (let k = 0; k < 8; k++) {
+                    const a = k * Math.PI / 4;
+                    const r = (1 - s.life) * 28 + 4;
+                    const px = Math.round(s.x + Math.cos(a) * r);
+                    const py = Math.round(s.y + Math.sin(a) * r);
+                    _ctx.fillRect(px, py, 3, 3);
+                }
+                _ctx.globalAlpha = s.life * 0.8;
+                _ctx.fillRect(Math.round(s.x) - 2, Math.round(s.y) - 2, 4, 4);
+                s.life -= 0.04;
+            }
+            _ctx.restore();
+        }
 
         // Real-world weather (rain/snow/thunder/mist) — masked by the shelter.
         try {

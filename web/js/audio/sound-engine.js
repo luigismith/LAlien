@@ -1635,32 +1635,42 @@ function playThinking() {
 // special layers (womb heartbeat, cradle bells, choir, bowl, etc.).
 function stageAmbientSpec(stage) {
     const s = clamp(stage | 0, 0, 7);
-    // Stage-specific tunings/palettes
+    // Peaks slightly lowered overall — the pad should sit behind gameplay,
+    // not in front. "chordCycle" lists a few voicings the pad gently drifts
+    // through over the course of minutes, giving natural variety.
     const specs = [
         // 0 Syrma — womb: deep heartbeat + distant choir whispers + warm sub
-        { freqs: [55, 82.5, 110], cutoff: 380, detune: 5, peak: 0.18, lfoRate: 0.04, filterLfo: 0.05,
-          wombPulse: true, distantChoir: true, tag: 'womb' },
+        { freqs: [55, 82.5, 110], cutoff: 380, detune: 5, peak: 0.13, lfoRate: 0.04, filterLfo: 0.05,
+          wombPulse: true, distantChoir: true, tag: 'womb',
+          chordCycle: [0, 2, -3, 0] },     // tiny semitone shifts
         // 1 Lali-na — tender cradle bells + soft breathing pad
-        { freqs: [65.4, 98.0, 130.8], cutoff: 500, detune: 6, peak: 0.16, lfoRate: 0.05, filterLfo: 0.06,
-          cradleBells: true, tag: 'cradle' },
+        { freqs: [65.4, 98.0, 130.8], cutoff: 500, detune: 6, peak: 0.12, lfoRate: 0.05, filterLfo: 0.06,
+          cradleBells: true, tag: 'cradle',
+          chordCycle: [0, 3, 5, 2] },
         // 2 Lali-shi — sparkling wind chimes + airy texture
-        { freqs: [73.4, 110, 146.8], cutoff: 650, detune: 7, peak: 0.15, lfoRate: 0.06, filterLfo: 0.07,
-          windChimes: true, tag: 'chimes' },
+        { freqs: [73.4, 110, 146.8], cutoff: 650, detune: 7, peak: 0.11, lfoRate: 0.06, filterLfo: 0.07,
+          windChimes: true, tag: 'chimes',
+          chordCycle: [0, 2, 5, 7, 5, 2] },
         // 3 Lali-ko — bouncy pentatonic plucks + warm hum
-        { freqs: [82.4, 123.5, 164.8], cutoff: 800, detune: 8, peak: 0.15, lfoRate: 0.07, filterLfo: 0.08,
-          pentaPluck: true, tag: 'play' },
+        { freqs: [82.4, 123.5, 164.8], cutoff: 800, detune: 8, peak: 0.11, lfoRate: 0.07, filterLfo: 0.08,
+          pentaPluck: true, tag: 'play',
+          chordCycle: [0, 4, 7, 5, 2, 7] },
         // 4 Lali-ren — expansive warm pad with gentle pulse
-        { freqs: [98, 147, 196], cutoff: 950, detune: 9, peak: 0.16, lfoRate: 0.08, filterLfo: 0.09,
-          softPulse: true, tag: 'warm' },
+        { freqs: [98, 147, 196], cutoff: 950, detune: 9, peak: 0.12, lfoRate: 0.08, filterLfo: 0.09,
+          softPulse: true, tag: 'warm',
+          chordCycle: [0, -3, 4, 2] },
         // 5 Lali-vox — rich cosmic pad with choir shimmer
-        { freqs: [110, 164.8, 220], cutoff: 1100, detune: 10, peak: 0.17, lfoRate: 0.09, filterLfo: 0.10,
-          choirHint: true, tag: 'cosmic' },
+        { freqs: [110, 164.8, 220], cutoff: 1100, detune: 10, peak: 0.13, lfoRate: 0.09, filterLfo: 0.10,
+          choirHint: true, tag: 'cosmic',
+          chordCycle: [0, 5, 3, 7, 2] },
         // 6 Lali-mere — resonant deep drone + singing bowl
-        { freqs: [73.4, 110, 146.8, 293.7], cutoff: 700, detune: 6, peak: 0.18, lfoRate: 0.035, filterLfo: 0.04,
-          bowl: true, tag: 'bowl' },
+        { freqs: [73.4, 110, 146.8, 293.7], cutoff: 700, detune: 6, peak: 0.13, lfoRate: 0.035, filterLfo: 0.04,
+          bowl: true, tag: 'bowl',
+          chordCycle: [0, 2, -5, 0] },
         // 7 Lali-thishi — transcendent ethereal chords, wide reverb
-        { freqs: [130.8, 196, 261.6, 392], cutoff: 1600, detune: 12, peak: 0.16, lfoRate: 0.10, filterLfo: 0.12,
-          choir: true, tag: 'ether' },
+        { freqs: [130.8, 196, 261.6, 392], cutoff: 1600, detune: 12, peak: 0.12, lfoRate: 0.10, filterLfo: 0.12,
+          choir: true, tag: 'ether',
+          chordCycle: [0, 5, 7, 3, 10, 5] },
     ];
     const sp = specs[s];
     sp.stage = s;
@@ -1832,10 +1842,159 @@ function startAmbient(stage = 0) {
         });
     }
 
+    // --- Master breathing LFO (slow, ±15% on out.gain) ---------------------
+    // Gives the whole ambient bed a very slow "living" swell — like distant
+    // waves. Period ≈ 70 seconds.
+    const breatheLfo = osc('sine', 0.014);
+    const breatheG = ctx.createGain();
+    breatheG.gain.value = 0.15;
+    breatheLfo.connect(breatheG).connect(out.gain);
+    breatheLfo.start();
+    nodes.push(breatheLfo);
+
+    // --- Slow chord drift ---------------------------------------------------
+    // Every 45–80 seconds we transpose the pad voices by a few semitones along
+    // a short musical cycle defined per-stage. Transitions use a 6-second
+    // linearRampToValueAtTime on each voice's frequency so nothing clicks.
+    // This is the main "variety" layer — subtle but keeps the pad alive.
+    const mainVoices = [];
+    let nodeScan = 1;  // skip filtLfo at index 0
+    spec.freqs.forEach(() => {
+        mainVoices.push(nodes[nodeScan]); nodeScan++;
+        mainVoices.push(nodes[nodeScan]); nodeScan++;
+        nodeScan++;  // skip the per-voice lfo
+    });
+    const baseFreqs = [];
+    spec.freqs.forEach(f => { baseFreqs.push(f, f); });
+
+    // --- Sparse melodic motifs --------------------------------------------
+    // Every ~18-45 seconds, 2-3 soft pentatonic notes float above the pad,
+    // detuned per-stage so each stage has its own "voice". This is what the
+    // keeper remembers humming later — the thing that turns the drone into
+    // *music*, not just ambient bed.
+    const MOTIF_SCALES = [
+        [196, 220, 261.6, 329.6],        // G3 A3 C4 E4 — womb: low, warm
+        [261.6, 329.6, 392, 440],        // C4 E4 G4 A4 — cradle: innocent major
+        [261.6, 311.1, 392, 466.2],      // C4 Eb4 G4 Bb4 — chimes: dorian colour
+        [392, 440, 523.3, 587.3, 659.3], // G4 A4 C5 D5 E5 — play: pentatonic bright
+        [293.7, 349.2, 440, 523.3],      // D4 F4 A4 C5 — warm: minor 7
+        [440, 523.3, 587.3, 659.3, 784], // A4 C5 D5 E5 G5 — cosmic: airy
+        [196, 293.7, 349.2, 523.3],      // G3 D4 F4 C5 — bowl: meditative gap
+        [523.3, 659.3, 784, 988],        // C5 E5 G5 B5 — ether: celestial
+    ];
+    if (true) {
+        const scale = MOTIF_SCALES[s] || MOTIF_SCALES[4];
+        const motif = () => {
+            if (!ambient) return;
+            const noteCount = 2 + Math.floor(Math.random() * 3);   // 2-4 notes
+            for (let i = 0; i < noteCount; i++) {
+                const hz = scale[Math.floor(Math.random() * scale.length)];
+                const startOffset = i * (0.35 + Math.random() * 0.6);
+                timers.push(setTimeout(() => {
+                    if (!ambient) return;
+                    const t = ctx.currentTime;
+                    // Primary voice — sine with bell-like FM shimmer layer
+                    const o = osc('sine', hz, (Math.random() - 0.5) * 4);
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(0.055, t + 0.22);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+                    o.connect(g);
+                    // Route through reverb for lingering tail
+                    connectOut(g, 0.75);
+                    o.start(t);
+                    o.stop(t + 3.0);
+                    // Second voice one octave up, quieter — gives shimmer
+                    if (Math.random() < 0.55) {
+                        const o2 = osc('sine', hz * 2, (Math.random() - 0.5) * 6);
+                        const g2 = ctx.createGain();
+                        g2.gain.setValueAtTime(0.0001, t);
+                        g2.gain.exponentialRampToValueAtTime(0.022, t + 0.12);
+                        g2.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+                        o2.connect(g2);
+                        connectOut(g2, 0.85);
+                        o2.start(t);
+                        o2.stop(t + 1.9);
+                    }
+                }, startOffset * 1000));
+            }
+            timers.push(setTimeout(motif, (16 + Math.random() * 28) * 1000));
+        };
+        timers.push(setTimeout(motif, (8 + Math.random() * 7) * 1000));
+    }
+
+    // --- Slow counter-melody — deeper, rarer, wide-interval phrases --------
+    // A second melodic voice that fires every 70-140s with 3-5 notes from
+    // the lower half of the scale. Adds "conversation" between layers.
+    {
+        const lowerScale = (MOTIF_SCALES[s] || MOTIF_SCALES[4]).slice(0, 3).map(hz => hz * 0.5);
+        const counter = () => {
+            if (!ambient) return;
+            const noteCount = 3 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < noteCount; i++) {
+                const hz = lowerScale[Math.floor(Math.random() * lowerScale.length)];
+                const startOffset = i * (0.8 + Math.random() * 0.6);
+                timers.push(setTimeout(() => {
+                    if (!ambient) return;
+                    const t = ctx.currentTime;
+                    const o = osc('triangle', hz, (Math.random() - 0.5) * 3);
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(0.035, t + 0.4);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 3.5);
+                    o.connect(g);
+                    connectOut(g, 0.7);
+                    o.start(t);
+                    o.stop(t + 3.7);
+                }, startOffset * 1000));
+            }
+            timers.push(setTimeout(counter, (70 + Math.random() * 70) * 1000));
+        };
+        timers.push(setTimeout(counter, (40 + Math.random() * 40) * 1000));
+    }
+
+    // --- Slow filter swell — every 90-180s, the filter cutoff climbs and
+    //     returns, giving the pad a 12-18 second "breath" of brightness.
+    {
+        const swell = () => {
+            if (!ambient) return;
+            const t = ctx.currentTime;
+            const dur = 14 + Math.random() * 4;
+            const peak = spec.cutoff * 2.0;
+            lp.frequency.cancelScheduledValues(t);
+            lp.frequency.setValueAtTime(lp.frequency.value, t);
+            lp.frequency.linearRampToValueAtTime(peak, t + dur / 2);
+            lp.frequency.linearRampToValueAtTime(spec.cutoff, t + dur);
+            timers.push(setTimeout(swell, (90 + Math.random() * 90) * 1000));
+        };
+        timers.push(setTimeout(swell, (55 + Math.random() * 35) * 1000));
+    }
+
+    if (spec.chordCycle && mainVoices.length) {
+        const cycle = spec.chordCycle;
+        let cycleIdx = 0;
+        const shift = () => {
+            if (!ambient) return;
+            cycleIdx = (cycleIdx + 1) % cycle.length;
+            const semi = cycle[cycleIdx];
+            const ratio = Math.pow(2, semi / 12);
+            const ramp = 6;   // seconds
+            const t = ctx.currentTime;
+            mainVoices.forEach((voice, i) => {
+                if (!voice || !voice.frequency) return;
+                voice.frequency.cancelScheduledValues(t);
+                voice.frequency.setValueAtTime(voice.frequency.value, t);
+                voice.frequency.linearRampToValueAtTime(baseFreqs[i] * ratio, t + ramp);
+            });
+            timers.push(setTimeout(shift, (45 + Math.random() * 35) * 1000));
+        };
+        timers.push(setTimeout(shift, (30 + Math.random() * 20) * 1000));
+    }
+
     const t0 = now();
     out.gain.cancelScheduledValues(t0);
     out.gain.setValueAtTime(0.0001, t0);
-    out.gain.exponentialRampToValueAtTime(1.0, t0 + 2.5);
+    out.gain.exponentialRampToValueAtTime(1.0, t0 + 3.5);
 
     ambient = { nodes, out, stage, timers };
 }
@@ -1876,6 +2035,25 @@ export const SoundEngine = {
     resume() {
         if (!ensureCtx()) return;
         if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    },
+    /** Expose the AudioContext + master bus so minigame synths share them. */
+    getAudioContext() { ensureCtx(); return ctx; },
+    getMasterBus()    { ensureCtx(); return master; },
+    /** Duck the stage ambient drone down so an in-foreground synth can be
+     *  heard clearly. factor is a multiplier (0..1), fadeMs the ramp length. */
+    duckAmbient(factor = 0.08, fadeMs = 600) {
+        if (!ambient || !ctx) return;
+        const t = now();
+        ambient.out.gain.cancelScheduledValues(t);
+        ambient.out.gain.setValueAtTime(ambient.out.gain.value, t);
+        ambient.out.gain.linearRampToValueAtTime(Math.max(0.0001, factor), t + fadeMs / 1000);
+    },
+    unduckAmbient(fadeMs = 1200) {
+        if (!ambient || !ctx) return;
+        const t = now();
+        ambient.out.gain.cancelScheduledValues(t);
+        ambient.out.gain.setValueAtTime(ambient.out.gain.value, t);
+        ambient.out.gain.linearRampToValueAtTime(1.0, t + fadeMs / 1000);
     },
     setEnabled(v) {
         _enabled = !!v;

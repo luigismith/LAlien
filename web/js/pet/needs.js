@@ -92,19 +92,36 @@ function needsAvgExcludingHealth(state) {
 }
 
 export const Needs = {
-    decay(state, timeMult, stage = 0) {
-        _gameTimeSeconds++;
+    /**
+     * @param {Float32Array} state   needs array
+     * @param {number} timeMult      seconds of simulated time to apply
+     * @param {number} [stage]       pet stage (affects cosmic decay)
+     * @param {number} [decayScale]  scalar applied ONLY to decay deltas, not
+     *   to game-time advancement. Use 0.35-0.4 for offline catch-up so the
+     *   pet "rests" while the keeper is away instead of being obliterated.
+     * @param {number} [vocabSize]   size of the alien lexicon the pet shares
+     *   with its keeper. A larger vocabulary slows COGNITION decay: a Lalìen
+     *   with a rich shared language stays mentally alive longer — it has an
+     *   inner conversation to lean on. At 0 words: full rate. Converges
+     *   toward 35% of the original rate around 150+ words.
+     */
+    decay(state, timeMult, stage = 0, decayScale = 1, vocabSize = 0) {
+        // Advance game-time by the real elapsed seconds so pathological
+        // timers (velin, morak, zevol) tick correctly even when a big
+        // chunk is simulated in one call.
+        _gameTimeSeconds += Math.max(1, Math.round(timeMult));
+        const ts = timeMult * decayScale;
 
         // Kora
-        addNeed(state, NeedType.KORA, -DECAY_KORA * timeMult);
+        addNeed(state, NeedType.KORA, -DECAY_KORA * ts);
 
         // Moko
         const mokoRate = _isStimulated ? DECAY_MOKO_STIM : DECAY_MOKO_DAY;
-        addNeed(state, NeedType.MOKO, -mokoRate * timeMult);
+        addNeed(state, NeedType.MOKO, -mokoRate * ts);
         _isStimulated = false;
 
         // Miska
-        addNeed(state, NeedType.MISKA, -DECAY_MISKA * timeMult);
+        addNeed(state, NeedType.MISKA, -DECAY_MISKA * ts);
 
         // Nashi
         let nashiRate = DECAY_NASHI;
@@ -117,52 +134,80 @@ export const Needs = {
         } else {
             _nashiIgnoredStart = 0;
         }
-        addNeed(state, NeedType.NASHI, -nashiRate * timeMult);
+        addNeed(state, NeedType.NASHI, -nashiRate * ts);
 
         // Health (derived from overall care). Converges toward the average
         // of the other needs: good care → heals up; neglect → sickens.
         const othersAvg = needsAvgExcludingHealth(state);
         const hp = state[NeedType.HEALTH];
         if (othersAvg >= 70) {
-            // Good care → heal toward full, faster the worse you currently are
             const gap = 100 - hp;
-            if (gap > 0) addNeed(state, NeedType.HEALTH, Math.min(gap, 0.020 * timeMult));
+            if (gap > 0) addNeed(state, NeedType.HEALTH, Math.min(gap, 0.020 * ts));
         } else if (othersAvg >= 45) {
-            // Ok → heal gently toward othersAvg, or mild decay if already above it
             if (hp < othersAvg) {
-                addNeed(state, NeedType.HEALTH, 0.008 * timeMult);
+                addNeed(state, NeedType.HEALTH, 0.008 * ts);
             } else {
-                addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * 0.5 * timeMult);
+                addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * 0.5 * ts);
             }
         } else if (othersAvg >= 25) {
-            // Poor → steady decline
-            addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * timeMult);
+            addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * ts);
         } else {
-            // Severe neglect → accelerated illness
-            addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * 2.5 * timeMult);
+            addNeed(state, NeedType.HEALTH, -DECAY_HEALTH * 2.5 * ts);
         }
 
-        // Cognition
-        addNeed(state, NeedType.COGNITION, -DECAY_COGNITION * timeMult);
+        // Cognition — decay is softened by the size of the alien lexicon
+        // shared with the keeper. Formula converges: mult=1 at 0 words,
+        // mult=0.35 at 145 words, floor 0.35.
+        const wisdomMult = Math.max(0.35, 1 - (vocabSize || 0) / 220);
+        addNeed(state, NeedType.COGNITION, -DECAY_COGNITION * ts * wisdomMult);
 
         // Affection
-        addNeed(state, NeedType.AFFECTION, -DECAY_AFFECTION * timeMult);
+        addNeed(state, NeedType.AFFECTION, -DECAY_AFFECTION * ts);
 
         // Curiosity
         let curiosityRate = DECAY_CURIOSITY;
         if (isRoutine()) curiosityRate += DECAY_CURIOSITY_ROUTINE;
-        addNeed(state, NeedType.CURIOSITY, -curiosityRate * timeMult);
+        addNeed(state, NeedType.CURIOSITY, -curiosityRate * ts);
 
         // Cosmic — dormant before stage 6 (Lali-mere): no decay, self-heals to full
         if (stage >= 6) {
-            addNeed(state, NeedType.COSMIC, -DECAY_COSMIC * timeMult);
+            addNeed(state, NeedType.COSMIC, -DECAY_COSMIC * ts);
         } else if (state[NeedType.COSMIC] < 100) {
             state[NeedType.COSMIC] = 100;
         }
 
-        // Security (recovers)
+        // Security (recovers even when offline — a calm world heals)
         if (state[NeedType.SECURITY] < 100) {
             addNeed(state, NeedType.SECURITY, RECOVERY_SECURITY * timeMult);
+        }
+
+        // ---- Emotional coupling ----
+        // Happiness (NASHI) cannot float on its own — it is sustained by the
+        // mind being engaged (COGNITION), the heart feeling loved (AFFECTION),
+        // the world feeling interesting (CURIOSITY), and safe (SECURITY). If
+        // those collapse, NASHI drifts down toward them; otherwise the pet
+        // would read as "euforico e apatico" at the same time.
+        const emoSupport = (
+            state[NeedType.COGNITION] * 0.30 +
+            state[NeedType.AFFECTION] * 0.35 +
+            state[NeedType.CURIOSITY] * 0.15 +
+            state[NeedType.SECURITY]  * 0.20
+        );
+        // NASHI can exceed support by up to 22 points (brief joy bursts allowed),
+        // beyond that it decays toward the ceiling.
+        const nashiCeiling = Math.min(100, emoSupport + 22);
+        if (state[NeedType.NASHI] > nashiCeiling) {
+            const gap = state[NeedType.NASHI] - nashiCeiling;
+            // Drift: 0.02/s at gap=20, 0.06/s at gap=60. Converges in minutes.
+            const rate = 0.02 + 0.001 * gap;
+            addNeed(state, NeedType.NASHI, -rate * ts);
+        }
+        // Symmetrically, AFFECTION cannot float if the pet has not seen the
+        // keeper in a while AND CURIOSITY/COGNITION are low (nothing reminds
+        // the pet of connection).
+        const mindActive = (state[NeedType.COGNITION] + state[NeedType.CURIOSITY]) / 2;
+        if (state[NeedType.AFFECTION] > 60 && mindActive < 20) {
+            addNeed(state, NeedType.AFFECTION, -0.005 * ts);
         }
 
         // Pathological tracking
@@ -181,6 +226,38 @@ export const Needs = {
         if (state[NeedType.COGNITION] < 5 && state[NeedType.CURIOSITY] < 5) {
             if (_renaStart === 0) _renaStart = _gameTimeSeconds;
         } else { _renaStart = 0; }
+    },
+
+    /**
+     * Simulate `elapsedGameSeconds` of decay in 5-minute chunks at a reduced
+     * rate so HEALTH convergence and pathological timers progress realistically
+     * instead of being flattened by a single huge call. Used by the catch-up
+     * path when the keeper returns after an absence.
+     */
+    catchUp(state, elapsedGameSeconds, stage = 0, rate = 0.4, vocabSize = 0) {
+        const CHUNK = 300;  // 5 game minutes
+        const pre = Array.from(state);
+        let remaining = Math.max(0, Math.floor(elapsedGameSeconds));
+        while (remaining > 0) {
+            const step = Math.min(CHUNK, remaining);
+            this.decay(state, step, stage, rate, vocabSize);
+            remaining -= step;
+        }
+        // Soft floor: the pet conserves energy while alone, so no single
+        // need can collapse below a threshold purely from an absence of
+        // modest length. Multi-day neglect still allows permadeath.
+        let floor;
+        if      (elapsedGameSeconds <=  4 * 3600) floor = 45;
+        else if (elapsedGameSeconds <= 12 * 3600) floor = 28;
+        else if (elapsedGameSeconds <= 24 * 3600) floor = 12;
+        else                                       floor = 0;
+        if (floor > 0) {
+            for (let i = 0; i < state.length; i++) {
+                // Only lift a need that STARTED above the floor; a need
+                // already below the floor when the keeper left stays there.
+                if (pre[i] >= floor && state[i] < floor) state[i] = floor;
+            }
+        }
     },
 
     // Care actions

@@ -15,6 +15,9 @@ import { Events } from './events.js';
 const LS_KEY      = 'lalien_owm_key';
 const LS_LAST     = 'lalien_weather_last';
 const REFRESH_MS  = 15 * 60 * 1000;   // 15 minutes
+// Shared fallback key (free tier). Visible in the bundle — monitor usage; the
+// keeper can override it from Settings with their own key.
+const DEFAULT_KEY = 'd5a1ceb560c057d7f6b91805cfb96b9a';
 
 let _state = {
     condition: 'clear',  // clear | clouds | rain | snow | thunder | mist
@@ -25,7 +28,7 @@ let _state = {
     updatedAt: 0,
     source: 'default',
 };
-let _key = localStorage.getItem(LS_KEY) || '';
+let _key = localStorage.getItem(LS_KEY) || DEFAULT_KEY;
 let _tickHandle = null;
 
 // Restore last snapshot from localStorage so the first render is not 'default'
@@ -125,16 +128,20 @@ export const Weather = {
     },
 
     setApiKey(key) {
-        _key = (key || '').trim();
-        if (_key) {
+        const trimmed = (key || '').trim();
+        if (trimmed) {
+            _key = trimmed;
             try { localStorage.setItem(LS_KEY, _key); } catch (_) {}
             this.init();
         } else {
+            // Clearing restores the shared default key
             try { localStorage.removeItem(LS_KEY); } catch (_) {}
+            _key = DEFAULT_KEY;
         }
     },
 
     hasApiKey() { return !!_key; },
+    isUsingDefaultKey() { return _key === DEFAULT_KEY; },
 
     /** Force a geolocation request and immediate refresh */
     async requestLocationAndRefresh() {

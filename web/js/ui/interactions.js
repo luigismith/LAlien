@@ -174,6 +174,20 @@ export const Interactions = {
                 if (navigator.vibrate) navigator.vibrate(10);
                 spawnRipple(pos.x, pos.y);
                 Events.emit('pet-poke', { x: pos.x, y: pos.y });
+            } else if (_state.isDown && !_state.isDragging) {
+                // Cottage first, then environment (fireflies, sun, moon)
+                import('./shelter.js').then(({ Shelter }) => {
+                    const region = Shelter.hitTest(pos.x, pos.y);
+                    if (region) {
+                        Shelter.onTap(region);
+                        Events.emit('shelter-tap', { region, x: pos.x, y: pos.y });
+                    } else {
+                        import('./renderer.js').then(({ Renderer }) => {
+                            const hit = Renderer.hitTestEnvironment(pos.x, pos.y);
+                            if (hit) Events.emit('environment-tap', hit);
+                        }).catch(() => {});
+                    }
+                }).catch(() => {});
             }
             if (_state.petStrokes >= 4) {
                 if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
@@ -266,6 +280,19 @@ export const Interactions = {
                     if (navigator.vibrate) navigator.vibrate(10);
                     spawnRipple(x, y);
                     Events.emit('pet-poke', { x, y });
+                } else {
+                    import('./shelter.js').then(({ Shelter }) => {
+                        const region = Shelter.hitTest(x, y);
+                        if (region) {
+                            Shelter.onTap(region);
+                            Events.emit('shelter-tap', { region, x, y });
+                        } else {
+                            import('./renderer.js').then(({ Renderer }) => {
+                                const hit = Renderer.hitTestEnvironment(x, y);
+                                if (hit) Events.emit('environment-tap', hit);
+                            }).catch(() => {});
+                        }
+                    }).catch(() => {});
                 }
             }
             if (_state.petStrokes >= 4) {

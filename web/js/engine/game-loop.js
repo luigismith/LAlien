@@ -33,6 +33,8 @@ import { Mind } from '../pet/mind.js';
 import { Weather } from './weather.js';
 import { Shelter } from '../ui/shelter.js';
 import { SoloGames } from '../pet/solo-games.js';
+import { Commands } from '../pet/commands.js';
+import { Relics } from './relics.js';
 
 // Re-export Events for backward compatibility
 export { Events };
@@ -110,18 +112,23 @@ function logicTick() {
         setTimeout(() => showRebirthScreen(), 2500);
     }
 
-    // Auto-save every 60 logic ticks (~ 60s at 1x)
+    // Auto-save every 60 logic ticks (~ 60s at 1x). Save unconditionally
+    // so the persisted Pet.lastRealTimestamp is never more than ~60s stale
+    // — otherwise a short browser close would be interpreted as an absence.
     GameState.autoSaveTimer++;
-    if (GameState.autoSaveTimer >= 60 && GameState.dirty) {
+    if (GameState.autoSaveTimer >= 60) {
         GameState.autoSaveTimer = 0;
+        const wasDirty = GameState.dirty;
         GameState.dirty = false;
         Persistence.savePet(Pet.serialize());
-        // Cloud push (debounced 3s inside CloudSync)
-        Persistence.exportSaveObj().then(data => {
-            setCloudStatus('syncing');
-            CloudSync.push(data);
-            setTimeout(() => setCloudStatus(CloudSync.isOnline() ? 'synced' : 'offline'), 4000);
-        });
+        // Cloud push only when state actually changed (saves bandwidth).
+        if (wasDirty) {
+            Persistence.exportSaveObj().then(data => {
+                setCloudStatus('syncing');
+                CloudSync.push(data);
+                setTimeout(() => setCloudStatus(CloudSync.isOnline() ? 'synced' : 'offline'), 4000);
+            });
+        }
     }
 }
 
@@ -173,6 +180,46 @@ function handleResize() {
 // ---------------------------------------------------------------------------
 // Cloud sync UI helpers
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Offline catch-up — shared by visibilitychange (tab switch) and init
+// (full browser close). Needs decay at a reduced rate while the keeper is
+// away so a few hours off doesn't obliterate the pet, and ticks in 5-minute
+// game-time chunks so HEALTH / pathological timers progress realistically.
+// ---------------------------------------------------------------------------
+const OFFLINE_RATE_DEFAULT = 0.4;   // needs decay at 40% while keeper is away
+const REAL_CAP_SEC   = 30 * 24 * 3600;   // 30 days of real time max
+const DECAY_CAP_SEC  = 18 * 3600;         // cap decay at 18 game hours
+
+function catchUpAfterAbsence() {
+    if (!Pet.isAlive || !Pet.isAlive()) return 0;
+    const nowMs = Date.now();
+    const last  = Pet.lastRealTimestamp || nowMs;
+    const elapsedMs = Math.max(0, nowMs - last);
+    if (elapsedMs < 60 * 1000) { Pet.lastRealTimestamp = nowMs; return 0; }
+
+    // IMPORTANT: when the app is in background or fully closed, time ALWAYS
+    // flows at 1x — regardless of the live time-multiplier the keeper has
+    // set. The multiplier is a "fast-forward while I'm watching" tool, not
+    // a licence to warp time offline. So a 10-second browser close at 3600×
+    // produces 10 seconds of decay, not 10 hours.
+    const elapsedReal = Math.min(Math.floor(elapsedMs / 1000), REAL_CAP_SEC);
+    const elapsedGame = elapsedReal;
+    if (elapsedGame <= 0) { Pet.lastRealTimestamp = nowMs; return 0; }
+
+    // Age always accumulates in full (no rate reduction) — lifetime marches on.
+    Pet.ageSeconds += elapsedGame;
+
+    // Eggs don't decay; they just age.
+    if (Pet.stage > 0) {
+        const decaySeconds = Math.min(elapsedGame, DECAY_CAP_SEC);
+        Needs.catchUp(Pet.needs, decaySeconds, Pet.stage, OFFLINE_RATE_DEFAULT, Pet.vocabularySize || 0);
+    }
+
+    Pet.lastRealTimestamp = nowMs;
+    Events.emit('pet-changed');
+    return Math.floor(elapsedMs / 60000);  // return minutes away
+}
+
 function setCloudStatus(state) { // 'synced' | 'syncing' | 'offline'
     const el = document.getElementById('status-cloud');
     if (!el) return;
@@ -319,6 +366,9 @@ async function resumeAfterLogin(serverOnline) {
     // Solo mini-games the pet plays by itself when bored
     SoloGames.init();
 
+    // Keepsakes (sogni, polaroid, pietre, costellazioni)
+    Relics.init();
+
     // Inline chat bar — send message from main screen
     const chatInput = document.getElementById('chat-input');
     const chatSend  = document.getElementById('chat-send');
@@ -344,6 +394,17 @@ async function resumeAfterLogin(serverOnline) {
         }
         // Vocabulary bidirectional
         AlienLexicon.discoverFromText(text, 'keeper');
+
+        // Pet decides whether to obey the keeper's command and actually does
+        // it (hop, dance, sleep, eat, etc.) or refuses based on mood & needs.
+        let cmdResult = { handled: false };
+        try { cmdResult = await Commands.interpret(text); } catch (e) { console.warn('[cmd]', e); }
+        if (cmdResult.handled) {
+            SpeechBubble.show(cmdResult.reply, cmdResult.executed ? 'happy' : Pet.getMood(), 3500);
+            Events.emit('pet-changed');
+            Pet.addConversation();
+            return;
+        }
 
         // Command recognition: if keeper tells pet to do something with items, force it
         const lower = text.toLowerCase();
@@ -380,11 +441,27 @@ async function resumeAfterLogin(serverOnline) {
                         response = response.replace(/\{[^}]*\}/g, '').replace(/[{}"]/g, '').trim();
                     }
                 }
+                // Strip roleplay-style prose: stage directions "(leaning closer)",
+                // action asterisks "*smiles*", tag prefixes "Syrma:", and
+                // surrounding quotation marks.
+                if (response) {
+                    response = response
+                        .replace(/\([^)]*\)/g, '')          // (leaning closer)
+                        .replace(/\*[^*]+\*/g, '')           // *smiles softly*
+                        .replace(/^\s*[A-Z][a-zA-Zàèéìòù'\- ]{0,20}:\s*/, '')  // "Syrma:" / "Lalien:"
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                        .replace(/^["'«»“”‘’]+|["'«»“”‘’]+$/g, '')  // wrapping quotes
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                    if (!response) response = 'thi...';
+                }
                 // While the pet is sleeping, the reply comes from inside the dream —
                 // the pet does NOT wake, and cognition gain is halved.
                 const dreaming = Activity.is(Pet, Activity.Type.SLEEPING);
                 const bubbleMood = dreaming ? 'sleepy' : Pet.getMood();
-                SpeechBubble.show(response, bubbleMood, dreaming ? 7000 : 5000);
+                SpeechBubble.show(response, bubbleMood, dreaming ? 7000 : 5000,
+                                  dreaming ? { fromDream: true } : {});
                 if (dreaming) {
                     Pet.needs[NeedType.COGNITION] = Math.min(100, Pet.needs[NeedType.COGNITION] + 1);
                     Pet.needs[NeedType.AFFECTION] = Math.min(100, Pet.needs[NeedType.AFFECTION] + 0.5);
@@ -454,11 +531,16 @@ async function resumeAfterLogin(serverOnline) {
         });
     }
 
+    // Apply offline catch-up (chunked decay at reduced rate). Runs on
+    // fresh page load / browser reopen — the visibilitychange handler
+    // covers tab switches but not full app closures.
+    const awayMinCaught = Pet.isAlive() ? catchUpAfterAbsence() : 0;
+
     // Retroactive simulation: if the keeper was away, ask the LLM what
     // the pet did while alone, then show a welcome-back sequence.
     if (Pet.isAlive() && !Pet.isEgg() && Pet.lastRealTimestamp) {
         const awayMs = Date.now() - Pet.lastRealTimestamp;
-        const awayMin = awayMs / 60000;
+        const awayMin = awayMinCaught || awayMs / 60000;
         if (awayMin >= 10) {
             Mind.simulateAbsence(awayMin).then(result => {
                 if (!result) return;
@@ -498,6 +580,135 @@ async function resumeAfterLogin(serverOnline) {
 
     // Mark dirty on any pet state change
     Events.on('pet-changed', () => { GameState.dirty = true; });
+
+    // Environment tap: firefly / sun / moon. Each gives a small, thematic
+    // boost to the pet's needs and a sparkle on-screen.
+    Events.on('environment-tap', async (ev) => {
+        if (!ev) return;
+        const clamp = (v) => Math.max(0, Math.min(100, v));
+        const { Renderer } = await import('../ui/renderer.js').catch(() => ({}));
+        if (ev.kind === 'firefly') {
+            // Catch the firefly: curiosity + joy
+            if (Renderer) {
+                Renderer.catchFirefly(ev.id);
+                Renderer.sparkleAt(ev.x, ev.y, 60);
+            }
+            if (Pet.isAlive && Pet.isAlive()) {
+                Pet.needs[NeedType.CURIOSITY] = clamp(Pet.needs[NeedType.CURIOSITY] + 2);
+                Pet.needs[NeedType.NASHI]     = clamp(Pet.needs[NeedType.NASHI]     + 1);
+            }
+            try { SoundEngine.playChirp && SoundEngine.playChirp(); } catch (_) {}
+            showToast('Una lucciola risponde al tuo tocco...');
+        } else if (ev.kind === 'sun') {
+            // Warmth of the sun: cosmic + nashi
+            if (Renderer) Renderer.sparkleAt(ev.x, ev.y, 45);
+            if (Pet.isAlive && Pet.isAlive()) {
+                Pet.needs[NeedType.COSMIC] = clamp(Pet.needs[NeedType.COSMIC] + 2);
+                Pet.needs[NeedType.NASHI]  = clamp(Pet.needs[NeedType.NASHI]  + 3);
+            }
+            try { SoundEngine.playSuccess && SoundEngine.playSuccess(); } catch (_) {}
+            showToast('Un raggio di sole ti scalda il viso. Il pet sorride.');
+        } else if (ev.kind === 'moon') {
+            // Quiet companionship of the moon: cosmic + security
+            if (Renderer) Renderer.sparkleAt(ev.x, ev.y, 220);
+            if (Pet.isAlive && Pet.isAlive()) {
+                Pet.needs[NeedType.COSMIC]   = clamp(Pet.needs[NeedType.COSMIC]   + 2);
+                Pet.needs[NeedType.SECURITY] = clamp(Pet.needs[NeedType.SECURITY] + 3);
+            }
+            try { SoundEngine.playChirp && SoundEngine.playChirp(); } catch (_) {}
+            showToast('La luna ascolta. Il Lalìen respira piano.');
+        } else if (ev.kind === 'crystal') {
+            // Each crystal rings with a pentatonic note derived from its hue
+            if (Renderer) Renderer.sparkleAt(ev.x, ev.y, ev.hue || 180);
+            if (Pet.isAlive && Pet.isAlive()) {
+                Pet.needs[NeedType.COSMIC]    = clamp(Pet.needs[NeedType.COSMIC]    + 1);
+                Pet.needs[NeedType.CURIOSITY] = clamp(Pet.needs[NeedType.CURIOSITY] + 1);
+            }
+            // Play a shimmering chime mapped from hue across a C pentatonic ladder
+            try {
+                const ctx = SoundEngine.getAudioContext && SoundEngine.getAudioContext();
+                const master = SoundEngine.getMasterBus && SoundEngine.getMasterBus();
+                if (ctx && master) {
+                    const scale = [523.25, 587.33, 659.25, 784.00, 880.00, 1046.50, 1174.66];
+                    const hz = scale[Math.floor(((ev.hue || 180) / 360) * scale.length) % scale.length];
+                    const t = ctx.currentTime;
+                    [1, 2, 3].forEach((mul, i) => {
+                        const o = ctx.createOscillator();
+                        const g = ctx.createGain();
+                        o.type = i === 0 ? 'sine' : 'triangle';
+                        o.frequency.value = hz * mul;
+                        const peak = [0.22, 0.06, 0.025][i];
+                        g.gain.setValueAtTime(0.0001, t);
+                        g.gain.exponentialRampToValueAtTime(peak, t + 0.01);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+                        o.connect(g).connect(master);
+                        o.start(t); o.stop(t + 1.7);
+                    });
+                }
+            } catch (_) {}
+        }
+        Events.emit('pet-changed');
+    });
+
+    // Cottage tap: the keeper reaches toward the shelter. Door sends the
+    // pet in or out; window rouses a sleeping pet gently; body just greets.
+    Events.on('shelter-tap', (ev) => {
+        if (!Pet.isAlive || !Pet.isAlive()) return;
+        if (Pet.isEgg && Pet.isEgg()) return;
+        const canvas = document.getElementById('game-canvas');
+        const w = canvas ? canvas.width : 800;
+        const shelterOffset = Math.floor(w * 0.39);
+        if (ev.region === 'door') {
+            // Never move a sleeping pet just because the keeper tapped the door.
+            if (Activity.is(Pet, Activity.Type.SLEEPING)) {
+                showToast('Dorme. Bussi piano, ma non si sveglia.');
+                SoundEngine.playClick && SoundEngine.playClick();
+                return;
+            }
+            if (Pet._inShelter) {
+                if (Pet.motion) Pet.motion.targetOffsetX = 0;
+                showToast('Lo chiami fuori dalla casa...');
+            } else {
+                if (Pet.motion) Pet.motion.targetOffsetX = shelterOffset;
+                showToast('Lo mandi verso la casetta...');
+            }
+            SoundEngine.playClick && SoundEngine.playClick();
+        } else if (ev.region === 'window') {
+            if (Activity.is(Pet, Activity.Type.SLEEPING)) {
+                Activity._exit(Pet, 'interrupt');
+                showToast('Bussi alla finestra. Si sveglia dolcemente.');
+            } else {
+                showToast('La luce della finestra ti accoglie.');
+            }
+            SoundEngine.playChirp && SoundEngine.playChirp();
+        } else {
+            // Body tap — cozy greeting
+            Pet.needs[NeedType.SECURITY] = Math.min(100, Pet.needs[NeedType.SECURITY] + 1);
+            SoundEngine.playPoke && SoundEngine.playPoke();
+        }
+        Events.emit('pet-changed');
+    });
+
+    // Lexicon → pet needs: every newly discovered alien word gives a small
+    // burst (the spark of shared language) and updates Pet.vocabularySize so
+    // the passive "wisdom" decay multiplier takes effect on the next tick.
+    Events.on('lexicon-word-discovered', (ev) => {
+        if (!Pet.isAlive || !Pet.isAlive() || Pet.isEgg()) return;
+        const clamp = (v) => Math.max(0, Math.min(100, v));
+        // Burst — source 'keeper' means the keeper taught it (gift = deeper
+        // affection). source 'pet' means the pet discovered it in its own
+        // utterance (pride, curiosity).
+        const fromKeeper = ev && ev.source === 'keeper';
+        Pet.needs[NeedType.COGNITION] = clamp(Pet.needs[NeedType.COGNITION] + 5);
+        Pet.needs[NeedType.CURIOSITY] = clamp(Pet.needs[NeedType.CURIOSITY] + 3);
+        Pet.needs[NeedType.AFFECTION] = clamp(Pet.needs[NeedType.AFFECTION] + (fromKeeper ? 3 : 2));
+        Pet.needs[NeedType.NASHI]     = clamp(Pet.needs[NeedType.NASHI] + 2);
+        // Keep Pet.vocabularySize in sync so decay uses the new count now.
+        Pet.vocabularySize = (ev && ev.total) || Pet.vocabularySize + 1;
+        // Tiny celebration cue
+        try { SoundEngine.playChirp && SoundEngine.playChirp(); } catch (_) {}
+        Events.emit('pet-changed');
+    });
 
     console.log('[LALIEN] Initialized. Stage:', Pet.getStageName(),
                 'Age:', Pet.getAgeHours(), 'h');
@@ -602,9 +813,10 @@ function handleAction(action) {
     switch (action) {
         case 'feed':
             // Overfeed guard: reject when already very full
-            if (Pet.needs[NeedType.KORA] > 85) {
+            if (Pet.needs[NeedType.KORA] > 90) {
+                const pct = Math.round(Pet.needs[NeedType.KORA]);
                 SpeechBubble.show('ko sha... shai', 'neutral', 1800);
-                showToast('Ne ha avuto abbastanza per ora.');
+                showToast(`Non ha fame — kòra al ${pct}%. Aspetta che si svuoti un po'.`);
                 return;
             }
             Activity.start(Pet, Activity.Type.EATING);
@@ -732,7 +944,8 @@ Events.on('autonomy-speak', (ev) => {
     if (!ev || !ev.line) return;
     // Pet emits a mood-aware chirp BEFORE the TTS line
     try { SoundEngine.playMoodChirp(Pet.getStage(), ev.mood || 'neutral'); } catch (_) {}
-    SpeechBubble.show(ev.line, ev.mood || 'neutral', 3000);
+    // 'autonomy' priority — dropped if a chat reply is in progress.
+    SpeechBubble.show(ev.line, ev.mood || 'neutral', 3000, { priority: 'autonomy' });
 });
 Events.on('autonomy-desire-fulfilled', (d) => {
     SpeechBubble.show('ko! thi custode… la-shi', 'happy', 2500);
@@ -1065,8 +1278,11 @@ function showLoginScreen() {
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         GameState.paused = true;
-        // Save on hide
-        if (GameState.dirty && GameState.initialized) {
+        // Always save on hide so lastRealTimestamp reflects reality when the
+        // keeper returns — otherwise the offline catch-up will pretend time
+        // passed even if the browser was only closed for a few seconds.
+        if (GameState.initialized) {
+            Pet.lastRealTimestamp = Date.now();
             Persistence.savePet(Pet.serialize());
             GameState.dirty = false;
         }
@@ -1077,23 +1293,17 @@ document.addEventListener('visibilitychange', () => {
         //   - Age always accumulates (up to 30 real days — enough for a long vacation)
         //   - Needs decay is capped to 24 game hours, so a week away doesn't instakill
         if (GameState.initialized && Pet.isAlive()) {
-            const now = Date.now();
-            const lastSave = Pet.lastRealTimestamp || now;
-            const elapsedMs = Math.max(0, now - lastSave);
-            const REAL_CAP_SEC  = 30 * 24 * 3600;   // 30 days of real time max
-            const DECAY_CAP_SEC = 24 * 3600;        // at most 24 game hours of decay
-            const elapsedReal = Math.min(Math.floor(elapsedMs / 1000), REAL_CAP_SEC);
-            const elapsedGameSeconds = Math.floor(elapsedReal * GameState.timeMultiplier);
-            if (elapsedGameSeconds > 0) {
-                // Age advances in full
-                Pet.ageSeconds += elapsedGameSeconds;
-                // Decay applies in a single call with the cumulative multiplier
-                const decayAmount = Math.min(elapsedGameSeconds, DECAY_CAP_SEC);
-                Needs.decay(Pet.needs, decayAmount, Pet.stage);
-                Pet.lastRealTimestamp = now;
-                Events.emit('pet-changed');
-            }
+            catchUpAfterAbsence();
         }
+    }
+});
+
+// pagehide fires reliably on full browser close / tab kill / iOS Safari
+// background. Mirror the hide-path save so the timestamp is fresh.
+window.addEventListener('pagehide', () => {
+    if (GameState.initialized) {
+        Pet.lastRealTimestamp = Date.now();
+        try { Persistence.savePet(Pet.serialize()); } catch (_) {}
     }
 });
 

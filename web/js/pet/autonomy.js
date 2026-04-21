@@ -38,18 +38,21 @@ let _currentDesire = null;
 // Mood-keyed alien phrases (stage-agnostic, readable on stages 1+)
 // ---------------------------------------------------------------------------
 const PHRASES = {
-    happy:   ['la-shi thi!', 'kora thi la-la!', 'selath… kesma!', 'ko! ko thi!', 'thi-thi la-shi', 'ven-kora! la-la-la!', 'shi shi ko!', 'kesma-thi lalí!'],
-    neutral: ['lalí…', 'kora thi', 'shi… thi.', 'mmh… la-shi', 'ko ko', 'thi…', 'shi-la.', 'lalí-ven.', 'ko. kora. thi.'],
+    // NOTE: non-hungry banks must NOT contain `kora`/`ven-kora` — those mean
+    // "hunger/want food" in lalien and reading them when the pet is actually
+    // sated breaks the keeper's trust in the simulation.
+    happy:   ['la-shi thi!', 'thi-thi la-la!', 'selath… kesma!', 'ko! ko thi!', 'thi-thi la-shi', 'shi shi ko!', 'kesma-thi lalí!', 'ven-thi lalí!'],
+    neutral: ['lalí…', 'shi thi', 'shi… thi.', 'mmh… la-shi', 'ko ko', 'thi…', 'shi-la.', 'lalí-ven.', 'ko. shi. thi.'],
     sad:     ['sha… lalí', 'moko… thi', 'kesma sha', 'thi… ven…', 'sha-sha… lalí', 'kora sha ven…'],
     scared:  ['shai! sha-sha', 'ven-thi… sha', 'kèsma?! shi-shi', 'shai… lalí custode', 'sha-sha… sha!'],
     hungry:  ['kora… kora?', 'ko… kora sha', 'lalí: kora thi', 'shi… kora sha thi', 'kora sha ven!', 'ven-kora?'],
     sleepy:  ['moko… moko thi', 'Zzz… lalí', 'shi… moko sha-la', 'moko-ven thi…', 'ko sha moko'],
     dirty:   ['miska sha!', 'vyth-thi miska', 'sha… miska sha', 'miska-sha!', 'ven-miska!'],
-    bored:   ['shi-thi?', 'la-shi ven?', 'kora thi sha… ven', 'ven? ven-la?', 'mmh… shi'],
-    curious: ['la-la? thi?', 'shai? kesma?', 'kora ven-la?', 'shai-thi?', 'ven? ven-kora?'],
+    bored:   ['shi-thi?', 'la-shi ven?', 'mmh… shi', 'ven? ven-la?', 'thi… sha-la.'],
+    curious: ['la-la? thi?', 'shai? kesma?', 'shai-thi?', 'ven? ven-la?', 'thi? la-shi?', 'mmh… shai?'],
     lonely:  ['kesma… lalí?', 'custode? custode?', 'thi sha… lalí', 'ven-thi? custode…', 'lalí solo… sha'],
-    evening: ['selath… sha. moko ven…', 'kora thi. moko sha-la.', 'ven-ora moko? sha-sha.', 'kèsma. moko thi.'],
-    sing:    ['la-la-la shi', 'mo-ko-la-la', 'kora-kora-thi-la', 'shi-shi-la ven'],
+    evening: ['selath… sha. moko ven…', 'thi… moko sha-la.', 'ven-ora moko? sha-sha.', 'kèsma. moko thi.'],
+    sing:    ['la-la-la shi', 'mo-ko-la-la', 'thi-la-thi-la', 'shi-shi-la ven'],
 };
 
 // Teaching moments — pet utters an alien word it knows, keeper reads it (goes in TTS)

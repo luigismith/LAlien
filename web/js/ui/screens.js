@@ -20,6 +20,8 @@ import { Death } from '../pet/death.js';
 import { SoundEngine } from '../audio/sound-engine.js';
 import { Weather } from '../engine/weather.js';
 import { Environment } from '../engine/environment.js';
+import { Relics, CONSTELLATIONS } from '../engine/relics.js';
+import { PdfExport } from '../engine/pdf-export.js';
 
 const SCREEN_IDS = {
     'setup': 'screen-setup',
@@ -31,6 +33,7 @@ const SCREEN_IDS = {
     'minigame': 'screen-minigame',
     'minigame-select': 'screen-minigame-select',
     'manual': 'screen-manual',
+    'relics': 'screen-relics',
 };
 
 function hideAll() {
@@ -55,6 +58,22 @@ export const Screens = {
         // Back buttons
         document.getElementById('btn-conv-back')?.addEventListener('click', () => this.show('main'));
         document.getElementById('btn-diary-back')?.addEventListener('click', () => this.show('main'));
+        document.getElementById('btn-diary-pdf')?.addEventListener('click', async () => {
+            try {
+                const diary = DiaryGenerator.getDiary() || [];
+                // Enrich entries with stage names for the PDF layout
+                const enriched = diary.map(e => ({
+                    ...e,
+                    stageName: Pet.getStageNameFor ? Pet.getStageNameFor(e.stage) : ''
+                }));
+                const vocab = AlienLexicon.getDiscoveredCount ? AlienLexicon.getDiscoveredCount() : 0;
+                const relics = Relics.getAll ? Relics.getAll() : null;
+                PdfExport.exportLivePet({ pet: Pet, diary: enriched, vocabularyCount: vocab, relics });
+            } catch (e) {
+                console.error('[PDF]', e);
+                showToast('Errore nell\'esportazione PDF');
+            }
+        });
         document.getElementById('btn-lexicon-back')?.addEventListener('click', () => this.show('main'));
         document.getElementById('btn-grave-back')?.addEventListener('click', () => this.show('main'));
         document.getElementById('btn-settings-back')?.addEventListener('click', () => this.show('main'));
@@ -591,15 +610,87 @@ export const Screens = {
             </section>
 
             <section>
-                <h3>🕹️ I 5 Mini-giochi</h3>
+                <h3>🕹️ I 7 Mini-giochi</h3>
+                <p><b>Classici (consumano MOKO, hai uno scopo):</b></p>
                 <ul>
-                    <li><b>Thishi-Revosh</b> ♪ — memoria dell'eco. Ripeti la sequenza di nodi colorati. +COGNITION +CURIOSITY</li>
-                    <li><b>Miska-Vythi</b> ✨ — pulizia di luce. Spazzola la polvere delicatamente. +MISKA +AFFECTION</li>
-                    <li><b>Selath-Nashi</b> ★ — costellazioni. Connetti le stelle giuste. +COSMIC +CURIOSITY</li>
-                    <li><b>Kòra-Tris</b> ▦ — Tetris alieno con 7 tetromini colorati. Completa righe per +COGNITION +CURIOSITY +SECURITY.<br><i>Tastiera: ←→ sposta, ↑/W ruota, ↓ giù, Spazio caduta istantanea. Touch: tap in alto = ruota, lati = sposta, centro = hard drop.</i></li>
-                    <li><b>Pac-Lalì</b> ☻ — labirinto con 3 morak (spiriti). Raccogli semi (+10), power-pellet (+50) rendono invincibile per 8s (mangi morak +200). +NASHI +CURIOSITY. Vittoria = +SECURITY.<br><i>Tastiera: frecce/WASD. Touch: swipe per girare.</i></li>
+                    <li><b>Kòra-Tris</b> ▦ — Tetris alieno con 7 tetromini. Anteprima prossimo pezzo + <b>pezzo fantasma</b> che mostra dove cadrà. +COGNITION +CURIOSITY +SECURITY.<br><i>Tastiera: ←→ sposta, ↑/W ruota, ↓ giù, Spazio caduta istantanea. Touch: <b>tap</b> = ruota, <b>drag orizzontale</b> = sposta di una cella, <b>drag verticale</b> = soft drop, <b>swipe giù rapido</b> = hard drop.</i></li>
+                    <li><b>Pac-Lalì</b> ☻ — labirinto con 3 morak. Power-pellet per 8s. <b>Frutti bonus</b> appaiono al 30% e 70% di progresso (+300/+450). Vittoria +200. +NASHI +CURIOSITY.<br><i>Tastiera: frecce/WASD. Touch: swipe per girare.</i></li>
                 </ul>
-                <p class="manual-note">Ogni partita costa MOKO (3-6). Dopo <b>3 partite in 10 min</b> il pet è stanco e rifiuta la 4ª.</p>
+                <p><b>Synth / musicali (rilassanti, nessun fallimento, <i>ristorano MOKO invece di consumarlo</i>):</b></p>
+                <ul>
+                    <li><b>Korìma-Celeste</b> 🎵 — arpa celeste a 7 corde in Do pentatonico. Tocca o trascina per suonare liberamente sopra un drone basso. 90s. +NASHI +COSMIC +SECURITY +AFFECTION, MOKO +6. Sblocca <b>Korìma-Selath</b>.</li>
+                    <li><b>Vith-Ondi</b> 🌊 — respiro guidato. <b>Tieni premuto</b> per espandere il tuo cerchio (inspira), rilascia per contrarlo (espira). Segui il cerchio tratteggiato che respira a ritmo naturale. Un drone sale di timbro mentre tieni, scende mentre rilasci — senti fisicamente la sincronia. 90s. +SECURITY (fino a 20) +COSMIC, MOKO +10. Sblocca <b>Vith-Ondi</b>.</li>
+                    <li><b>Thi-Sing</b> 🎛 — theremin cosmico. Trascina il dito: <b>X = intonazione</b> (scala pentatonica Do minore), <b>Y = timbro</b> (dal sinusoidale morbido alla saw luminosa). Vibrato automatico. Un pad di 4 accordi cambia ogni 16s sotto la tua improvvisazione. 80s. +COSMIC +NASHI +CURIOSITY, MOKO +4.</li>
+                    <li><b>Shalim-Koro</b> 🎼 — <b>orchidea d'accordi</b>, free-play in stile Telepathic Instruments Orchid. 7 pad ad anello (I-ii-iii-IV-V-vi-vii), tocca un pad e suona un accordo intero voiced su più ottave. 3 toggle in alto: <b>modo</b> (maggiore/minore/dorian), <b>estensioni</b> (triade / +7 / +7+9), <b>timbro</b> (morbido/brillante). Niente obiettivo, niente punteggio da inseguire — componi liberamente. 90s. +COSMIC (fino a 14) +NASHI, MOKO +5.</li>
+                    <li><b>Vythi-Pulse</b> 🥁 — step sequencer a 8 passi × 3 tracce (kick / chime / bell) a 90 BPM. Tocca le celle per accenderle/spegnerle; il loop riproduce in continuo la tua composizione. 75s. +CURIOSITY +COGNITION +NASHI, MOKO +2.</li>
+                </ul>
+                <p class="manual-note">I classici costano MOKO (5-6). Dopo <b>3 partite classiche in 10 min</b> il pet è stanco e rifiuta la 4ª. I synth invece riposano il pet e non contano nel limite di stanchezza.</p>
+            </section>
+
+            <section>
+                <h3>🌍 Il mondo esterno (meteo, giorno/notte, rifugio)</h3>
+                <p>La scena del Lalìen è sincronizzata con la <b>realtà del custode</b>.</p>
+                <ul>
+                    <li><b>Giorno/notte reale</b>: alba e tramonto calcolati dalla tua posizione geografica. Il sole attraversa un arco parabolico vero — basso all'alba a sinistra, zenit a mezzogiorno, basso a destra al tramonto, con tinta calda nel pomeriggio inoltrato. Di notte torna il cielo cosmico con stelle.</li>
+                    <li><b>Meteo reale</b>: se concedi la geolocalizzazione, l'app mostra pioggia, neve, temporali con flash, nuvole o nebbia della tua città in tempo reale (aggiornamento ogni 15 min). Chiave OpenWeatherMap già configurata — puoi sostituirla con la tua da <b>Impostazioni → Meteo reale</b>.</li>
+                    <li><b>La casetta</b> 🏠 — sulla destra della scena. Il Lalìen ci va da solo quando: ha paura (SECURITY bassa), piove o nevica, è molto stanco. Dentro: SECURITY rigenera più in fretta e le particelle di pioggia/neve non lo toccano.</li>
+                    <li><b>Sporcizia visiva</b>: sotto MISKA 55 il pet sviluppa macchie sul corpo (seeded dal suo DNA — sempre negli stessi punti); sotto 22 compaiono anche mosche. Lavarlo le rimuove gradualmente. L'ambiente intorno accumula polvere sul terreno.</li>
+                    <li><b>Reazione al meteo</b>: la tempesta al rifugio vale come evento per il Reliquiario (pietra "sopravvissuta alla tempesta" + costellazione Shalim-Vox).</li>
+                </ul>
+            </section>
+
+            <section>
+                <h3>🎮 Comandi diretti</h3>
+                <p>Se scrivi al Lalìen un verbo d'azione, lui <b>decide se obbedire</b> (in base a umore, personalità, stanchezza) e poi lo <b>fa davvero</b> sullo schermo — non ti risponde soltanto a parole. Riconosciuti:</p>
+                <ul>
+                    <li><b>salta</b>, <b>balla</b>, <b>gira/ruota</b>, <b>siediti</b>, <b>vieni qui</b>, <b>fermo/stai fermo</b>, <b>sinistra</b>, <b>destra</b>, <b>rifugio/tana</b></li>
+                    <li><b>dormi</b>, <b>svegliati</b>, <b>mangia</b>, <b>lavati</b>, <b>medita</b> (stadio 6+), <b>gioca</b>, <b>canta</b>, <b>zitto</b></li>
+                </ul>
+                <p>Probabilità di obbedienza: parte da ~72%, +12% se AFFECTION alta, −25% se bassa, −45% se SULKY, −30% se AFRAID, −35% per comandi fisici quando MOKO &lt;30. Personalità <b>playful</b> accetta più volentieri i salti/balli; <b>anxious</b> corre più volentieri al rifugio. Bebè (stadio 0-1) quasi non obbedisce.</p>
+                <p class="manual-note">Se rifiuta risponde "sha... moko" o simile; se non può proprio (meditare prima dello stadio 6) dice "sha... non riesco".</p>
+            </section>
+
+            <section>
+                <h3>🎨 Giochi che il Lalìen inventa da solo</h3>
+                <p>Quando è leggermente annoiato (NASHI o CURIOSITY &lt;60) e IDLE, inventa attività senza di te. Visibili sullo schermo con una piccola etichetta:</p>
+                <ul>
+                    <li>🐞 <b>Insegue una lucciola</b> (stadi 1+)</li>
+                    <li>🗿 <b>Impila sassolini</b> (stadi 2+)</li>
+                    <li>💃 <b>Balla con la propria ombra</b> (stadi 1+)</li>
+                    <li>⭐ <b>Osserva le stelle</b> (stadi 3+, solo di notte) → contribuisce alla costellazione <b>Moko-Ren</b></li>
+                    <li>🫧 <b>Soffia bolle luminose</b> (stadi 1+)</li>
+                    <li>🕳️ <b>Scava una piccola buca</b> (stadi 2+)</li>
+                </ul>
+                <p>Durano 20-30 secondi. Restaurano NASHI/CURIOSITY modestamente, a costo di un po' di MOKO. Una carezza o un comando li interrompe subito.</p>
+            </section>
+
+            <section>
+                <h3>🎐 Reliquiario (4 collezionabili)</h3>
+                <p>Ogni Lalìen accumula <b>cimeli</b> nel corso della sua vita, visibili in <b>Impostazioni → 🎐 Reliquiario</b>. Alla morte, l'intero set passa al Cimitero dei Ricordi — un nuovo seme riparte da zero, ma i cimeli del precedente restano leggibili nel suo loculo.</p>
+                <ul>
+                    <li><b>Sogni</b> 💭 — al risveglio di un sonno ≥10 minuti reali, l'AI genera 2-4 righe di sogno in prima persona, con tono modulato da umore e stadio. Scared → incubi tenui, sad → malinconici, cosmic (stadio 6+) → visioni di Echoa. Richiede chiave AI (altrimenti frasi fallback scritte a mano). Max 40 sogni conservati.</li>
+                    <li><b>Polaroid</b> 📷 — auto-screenshot della scena nei momenti rituali: schiusa, ogni evoluzione (7 totali), prima pioggia, prima neve, primo tuono vissuto al rifugio, morte o trascendenza. Stile polaroid con didascalia e data.</li>
+                    <li><b>Pietre della memoria</b> 🗿 — pattern pixel-art 5×5 <b>simmetrico derivato dal DNA</b> del Lalìen (ogni Lalìen ha la sua firma) + una riga-ricordo. Deposti quando: prima carezza ricevuta, primo rientro al rifugio, sopravvivenza a una tempesta.</li>
+                    <li><b>Costellazioni</b> ✨ — 8 costellazioni fisse con nomi lalien e mito: <i>Kesma-Thivren</i> (prima carezza), <i>Korìma-Selath</i> (arpa celeste), <i>Vith-Ondi</i> (respiro), <i>Selath-Revosh</i> (Selath-Nashi), <i>Thera-Lashi</i> (5 meditazioni), <i>Moko-Ren</i> (sonno notturno ≥30 min), <i>Nashi-La</i> (felicità alta per 5 min), <i>Shalim-Vox</i> (tempesta al rifugio). Completarle tutte sblocca il sogno speciale "l'ultimo canto di Echoa".</li>
+                </ul>
+                <p class="manual-note">I collezionabili sono <b>per-Lalìen</b>, non transgenerazionali. Il lessico e il cimitero invece sono tuoi e restano sempre.</p>
+            </section>
+
+            <section>
+                <h3>💤 Parlare al Lalìen mentre dorme</h3>
+                <p>Se scrivi al pet durante SLEEPING, non si sveglia. L'AI risponde dal <b>mondo del sogno</b>: frasi frammentate con immagini oniriche (luci fluttuanti, madri-coro, il viaggio del syrma), logica obliqua, tanti puntini di sospensione. È l'unico modo per sentirlo parlare dai sogni — le risposte non finiscono nel Reliquiario, ma il sogno completo al risveglio sì.</p>
+            </section>
+
+            <section>
+                <h3>⏳ Tempo offline</h3>
+                <p>Quando chiudi l'app, il pet <b>riposa</b>: i bisogni calano al 40% della velocità normale. Un <b>pavimento morbido</b> impedisce che una breve assenza azzeri tutto:</p>
+                <ul>
+                    <li><b>≤ 4h</b> di assenza → nessun bisogno scende sotto 45</li>
+                    <li><b>≤ 12h</b> → floor 28</li>
+                    <li><b>≤ 24h</b> → floor 12</li>
+                    <li><b>&gt; 24h</b> → nessun floor, permadeath possibile</li>
+                </ul>
+                <p>L'età invece avanza sempre in tempo reale (fino a 30 giorni di assenza massima). I timer patologici (velin/morak/zevol) progrediscono correttamente anche mentre sei via.</p>
             </section>
 
             <section>
@@ -742,8 +833,12 @@ export const Screens = {
         for (const g of graves.slice().reverse()) {
             const div = document.createElement('div');
             div.className = `grave-entry ${g.transcended ? 'grave-transcended' : ''}`;
+            const safeName = String(g.name || 'Lalien').replace(/</g, '&lt;');
             div.innerHTML = `
-                <div class="grave-name">${g.name || 'Lalien'}</div>
+                <div class="grave-header-row">
+                    <div class="grave-name">${safeName}</div>
+                    <button class="btn-small grave-pdf-btn" title="Esporta reliquia PDF">📜</button>
+                </div>
                 <div class="grave-details">
                     ${I18n.get('graveyard_lived')} ${g.ageDays} ${I18n.get('graveyard_days')}<br>
                     ${I18n.get('graveyard_stage')}: ${g.stageName}<br>
@@ -751,6 +846,15 @@ export const Screens = {
                 </div>
                 <div class="grave-last-words">${g.lastWords}</div>
             `;
+            div.querySelector('.grave-pdf-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                try {
+                    PdfExport.exportGraveyardEntry(g);
+                } catch (err) {
+                    console.error('[PDF]', err);
+                    showToast('Errore nell\'esportazione PDF');
+                }
+            });
             container.appendChild(div);
         }
     },
@@ -855,6 +959,27 @@ export const Screens = {
             showToast(e.target.checked ? 'Audio attivato' : 'Audio disattivato');
         });
 
+        // Volume slider
+        const volSlider = document.getElementById('settings-volume-slider');
+        const volValue  = document.getElementById('settings-volume-value');
+        const volIcon   = document.getElementById('settings-volume-icon');
+        const updateVolumeUI = (pct) => {
+            if (volValue) volValue.textContent = pct + '%';
+            if (volIcon) volIcon.textContent = pct === 0 ? '🔇' : (pct < 40 ? '🔈' : (pct < 75 ? '🔉' : '🔊'));
+        };
+        if (volSlider) {
+            volSlider.addEventListener('input', (e) => {
+                const pct = Number(e.target.value);
+                SoundEngine.setVolume(pct / 100);
+                updateVolumeUI(pct);
+            });
+            // Play a short chirp on release so the keeper hears the new level.
+            volSlider.addEventListener('change', () => {
+                try { SoundEngine.resume && SoundEngine.resume(); } catch (_) {}
+                try { SoundEngine.playMoodChirp(2, 'neutral'); } catch (_) {}
+            });
+        }
+
         // "Prova audio" — force resume + play a chirp + show diagnostic
         document.getElementById('btn-audio-test')?.addEventListener('click', () => {
             try { SoundEngine.resume && SoundEngine.resume(); } catch (_) {}
@@ -958,6 +1083,15 @@ export const Screens = {
             setTimeout(() => location.reload(), 1000);
         });
 
+        document.getElementById('btn-relics-nav')?.addEventListener('click', () => { this._renderRelics('dreams'); this.show('relics'); });
+        document.getElementById('btn-relics-back')?.addEventListener('click', () => this.show('settings'));
+        document.querySelectorAll('.relics-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.relics-tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._renderRelics(btn.dataset.tab);
+            });
+        });
         document.getElementById('btn-graveyard-nav')?.addEventListener('click', () => this.show('graveyard'));
         document.getElementById('btn-lexicon-nav')?.addEventListener('click', () => this.show('lexicon'));
         document.getElementById('btn-diary-nav')?.addEventListener('click', () => this.show('diary'));
@@ -1051,6 +1185,16 @@ export const Screens = {
 
         const sfxEl = document.getElementById('settings-sfx-toggle');
         if (sfxEl) sfxEl.checked = SoundEngine.isEnabled();
+        // Sync the volume slider with the engine's current value
+        const volSliderEl = document.getElementById('settings-volume-slider');
+        const volValueEl  = document.getElementById('settings-volume-value');
+        const volIconEl   = document.getElementById('settings-volume-icon');
+        if (volSliderEl) {
+            const pct = Math.round((SoundEngine.getVolume?.() ?? 1) * 100);
+            volSliderEl.value = String(pct);
+            if (volValueEl) volValueEl.textContent = pct + '%';
+            if (volIconEl)  volIconEl.textContent  = pct === 0 ? '🔇' : (pct < 40 ? '🔈' : (pct < 75 ? '🔉' : '🔊'));
+        }
         const ttsEl = document.getElementById('settings-tts-toggle');
         if (ttsEl) ttsEl.checked = localStorage.getItem('lalien_tts_enabled') !== '0';
         const tutEl = document.getElementById('settings-tutorial-toggle');
@@ -1078,11 +1222,13 @@ export const Screens = {
                 const game = btn.dataset.game;
                 let type;
                 switch (game) {
-                    case 'echo': type = MiniGames.GameType.ECHO_MEMORY; break;
-                    case 'clean': type = MiniGames.GameType.LIGHT_CLEANSING; break;
-                    case 'star': type = MiniGames.GameType.STAR_JOY; break;
                     case 'tetris': type = MiniGames.GameType.TETRIS_KORA; break;
                     case 'pacman': type = MiniGames.GameType.PACMAN_LALI; break;
+                    case 'harp':   type = MiniGames.GameType.KORIMA_HARP; break;
+                    case 'breath': type = MiniGames.GameType.VITH_BREATH; break;
+                    case 'thi-sing': type = MiniGames.GameType.THI_SING; break;
+                    case 'shalim':   type = MiniGames.GameType.SHALIM_KORO; break;
+                    case 'vythi':    type = MiniGames.GameType.VYTHI_PULSE; break;
                 }
                 this._startMinigame(type);
             });
@@ -1114,9 +1260,11 @@ export const Screens = {
         const scoreEl = document.getElementById('minigame-score');
 
         const gameNames = {
-            [MiniGames.GameType.ECHO_MEMORY]: 'Thishi-Revosh',
-            [MiniGames.GameType.LIGHT_CLEANSING]: 'Miska-Vythi',
-            [MiniGames.GameType.STAR_JOY]: 'Selath-Nashi',
+            [MiniGames.GameType.KORIMA_HARP]: 'Korìma-Celeste',
+            [MiniGames.GameType.VITH_BREATH]: 'Vith-Ondi',
+            [MiniGames.GameType.THI_SING]: 'Thi-Sing',
+            [MiniGames.GameType.SHALIM_KORO]: 'Shalim-Koro',
+            [MiniGames.GameType.VYTHI_PULSE]: 'Vythi-Pulse',
         };
         title.textContent = gameNames[type] || 'Gioco';
 
@@ -1127,19 +1275,29 @@ export const Screens = {
         let isDragging = false;
         let lastTouchPos = null;
 
+        // Map client-space pointer events into the canvas's own pixel space.
+        // The canvas backing store is sized to its CSS box (canvas.width may
+        // be 1024 on a MacBook Air), NOT to a fixed 800x400. Games render
+        // using canvas.width/height — so touch handling must agree.
         const getPos = (e) => {
             const rect = canvas.getBoundingClientRect();
-            const x = ((e.clientX || e.touches?.[0]?.clientX || 0) - rect.left) * (800 / rect.width);
-            const y = ((e.clientY || e.touches?.[0]?.clientY || 0) - rect.top) * (400 / rect.height);
+            const cx = e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX ?? 0;
+            const cy = e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY ?? 0;
+            const x = (cx - rect.left) * (canvas.width  / rect.width);
+            const y = (cy - rect.top)  * (canvas.height / rect.height);
             return { x, y };
         };
 
         const onDown = (e) => {
             e.preventDefault();
             isDragging = false;
+            // iOS Safari requires the AudioContext be resumed inside a user
+            // gesture — this call runs in the touch handler, so any ambient
+            // synth that was instantiated in a suspended state will now sing.
+            try { SoundEngine.resume && SoundEngine.resume(); } catch (_) {}
             const pos = getPos(e);
             lastTouchPos = pos;
-            MiniGames.handleTouch(pos.x, pos.y, false, 800, 400);
+            MiniGames.handleTouch(pos.x, pos.y, false, canvas.width, canvas.height);
         };
 
         const onMove = (e) => {
@@ -1147,13 +1305,14 @@ export const Screens = {
             if (!lastTouchPos) return;
             isDragging = true;
             const pos = getPos(e);
-            MiniGames.handleTouch(pos.x, pos.y, true, 800, 400);
+            MiniGames.handleTouch(pos.x, pos.y, true, canvas.width, canvas.height);
         };
 
         const onUp = (e) => {
             e.preventDefault();
             lastTouchPos = null;
             isDragging = false;
+            MiniGames.handleRelease && MiniGames.handleRelease();
         };
 
         canvas.addEventListener('mousedown', onDown);
@@ -1183,11 +1342,14 @@ export const Screens = {
             if (MiniGames.isGameOver()) {
                 // Show result briefly, then end
                 setTimeout(() => {
+                    const currentType = MiniGames.getCurrentGame();
+                    const typeName = Object.keys(MiniGames.GameType).find(k => MiniGames.GameType[k] === currentType);
                     const result = MiniGames.endGame();
                     if (result) {
                         Pet.applyGameResult(result);
                         DiaryGenerator.logMemory('play', `gioco completato, punteggio: ${result.score}`);
                         Events.emit('pet-changed');
+                        Events.emit('minigame-end', { type: typeName, score: result.score });
                         showToast(`Punteggio: ${result.score}`);
                     }
                     // Clean up event listeners
@@ -1209,6 +1371,63 @@ export const Screens = {
             requestAnimationFrame(gameLoop);
         };
         requestAnimationFrame(gameLoop);
+    },
+
+    _renderRelics(tab) {
+        const body = document.getElementById('relics-body');
+        if (!body) return;
+        const fmt = (iso) => {
+            try { return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }); }
+            catch { return ''; }
+        };
+        body.innerHTML = '';
+        if (tab === 'dreams') {
+            const dreams = Relics.getDreams();
+            if (!dreams.length) { body.innerHTML = '<p class="relics-empty">Nessun sogno ancora. Il Lalìen deve dormire almeno 10 minuti perché i sogni restino.</p>'; return; }
+            body.innerHTML = dreams.map(d => `
+                <div class="relic-dream ${d.special ? 'special' : ''}">
+                    <div class="relic-dream-meta">${fmt(d.date)} · stadio ${d.stage} · ${d.mood}${d.durationMin ? ' · ' + d.durationMin + ' min di sonno' : ''}</div>
+                    <div class="relic-dream-text">${d.text.replace(/</g,'&lt;')}</div>
+                </div>`).join('');
+        } else if (tab === 'polaroids') {
+            const pol = Relics.getPolaroids();
+            if (!pol.length) { body.innerHTML = '<p class="relics-empty">Nessuna polaroid ancora. Si generano ai momenti importanti: schiusa, evoluzioni, prima pioggia, ultimo respiro.</p>'; return; }
+            body.innerHTML = `<div class="relics-grid">` + pol.map(p => `
+                <div class="relic-polaroid">
+                    <img src="${p.dataUrl}" alt="">
+                    <div class="relic-polaroid-caption">${p.caption}</div>
+                    <div class="relic-polaroid-meta">${fmt(p.date)}</div>
+                </div>`).join('') + `</div>`;
+        } else if (tab === 'stones') {
+            const st = Relics.getStones();
+            if (!st.length) { body.innerHTML = '<p class="relics-empty">Nessuna pietra ancora. Il Lalìen ne depone una ai tuoi piedi dopo certe emozioni forti.</p>'; return; }
+            body.innerHTML = `<div class="relics-grid">` + st.map(s => {
+                // Render the 5x5 DNA grid
+                const size = 6;
+                let svg = `<svg viewBox="0 0 ${size*5} ${size*5}" class="relic-stone-svg" xmlns="http://www.w3.org/2000/svg">`;
+                svg += `<rect width="${size*5}" height="${size*5}" fill="#352A1A"/>`;
+                for (let i = 0; i < 25; i++) {
+                    if (!s.pattern[i]) continue;
+                    const x = (i % 5) * size;
+                    const y = Math.floor(i / 5) * size;
+                    svg += `<rect x="${x}" y="${y}" width="${size}" height="${size}" fill="hsl(${s.hue},55%,60%)"/>`;
+                }
+                svg += `</svg>`;
+                return `
+                <div class="relic-stone">
+                    ${svg}
+                    <div class="relic-stone-caption">${s.caption}</div>
+                    <div class="relic-stone-meta">${fmt(s.date)}</div>
+                </div>`;
+            }).join('') + `</div>`;
+        } else if (tab === 'constellations') {
+            const cs = Relics.getConstellations();
+            body.innerHTML = `<div class="relics-list">` + cs.map(c => `
+                <div class="relic-constellation ${c.unlocked ? 'unlocked' : 'locked'}">
+                    <div class="relic-const-name">${c.unlocked ? c.name : '???'}</div>
+                    <div class="relic-const-myth">${c.unlocked ? c.myth : '— costellazione non ancora scoperta —'}</div>
+                </div>`).join('') + `</div>`;
+        }
     },
 
     _refreshWeatherStatus() {
