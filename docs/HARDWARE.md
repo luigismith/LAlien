@@ -1,6 +1,12 @@
 # Hardware Documentation — Lalìen Companion
 
-## Target Hardware
+> ⚠️ **Documento storico.** Lalìen Companion ha iniziato come firmware per
+> Arduino GIGA R1 WiFi ma è stato **trasformato in una Progressive Web App**
+> che gira su qualsiasi browser moderno. Questo documento descrive il target
+> hardware originale e resta come riferimento archeologico per il porting.
+> Per la versione attuale vedi il [README](../README.md).
+
+## Target Hardware (deprecato)
 
 ### Arduino GIGA R1 WiFi
 - MCU: STM32H747XI dual-core (Cortex-M7 @ 480MHz + Cortex-M4 @ 240MHz)

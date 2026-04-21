@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#020A0A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="Lalien Companion - A living library from Echoa, learning your language one word at a time.">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.svg">
+    <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+    <meta name="apple-mobile-web-app-title" content="Lalien">
+    <title>Lalien Companion</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Status Bar -->
+    <div id="status-bar">
+        <div id="status-left">
+            <span id="status-name">Syrma</span>
+            <span id="status-stage" class="status-tag"></span>
+        </div>
+        <div id="status-needs-dots"></div>
+        <div id="status-right">
+            <span id="status-age"></span>
+            <span id="status-cloud" class="offline" title="Sync server">&#9729;</span>
+            <button id="btn-status-settings" class="btn-status-icon" data-action="settings" aria-label="Impostazioni" title="Impostazioni">&#9881;</button>
+        </div>
+    </div>
+
+    <!-- Needs Overlay -->
+    <div id="needs-overlay" class="overlay hidden">
+        <div class="overlay-content needs-panel">
+            <h2 id="needs-title">Needs</h2>
+            <div id="needs-bars"></div>
+            <button class="btn-close" data-close="needs-overlay">&times;</button>
+        </div>
+    </div>
+
+    <!-- Main Canvas -->
+    <canvas id="game-canvas" width="800" height="480"></canvas>
+
+    <!-- Rebirth Overlay (shown when pet is dead/buried) -->
+    <div id="screen-rebirth" class="screen-overlay hidden">
+        <div class="rebirth-container">
+            <h2 class="gold-text">Un seme nuovo attende</h2>
+            <p class="rebirth-epitaph" id="rebirth-epitaph"></p>
+            <p class="rebirth-text">Il cosmo dei Suoni non si esaurisce. Un altro syrma è caduto sul tuo mondo, se vuoi accoglierlo.</p>
+            <div class="rebirth-field">
+                <label for="rebirth-name">Nome del nuovo Lalìen</label>
+                <input type="text" id="rebirth-name" placeholder="Puoi scegliere dopo..." maxlength="32">
+            </div>
+            <div class="rebirth-buttons">
+                <button class="btn-primary" id="btn-rebirth-plant">Pianta il nuovo seme</button>
+                <button class="btn-link" id="btn-rebirth-graveyard">Visita il cimitero</button>
+            </div>
+            <p class="rebirth-note">Il cimitero dei ricordi, il lessico imparato e l'account del server restano con te.</p>
+        </div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="screen-login" class="screen-overlay hidden">
+        <div class="login-container">
+            <h1 class="gold-text">Lalìen Companion</h1>
+            <p class="login-subtitle">Inserisci il tuo PIN per accedere al tuo custodito</p>
+            <div id="login-form" class="login-form">
+                <div class="login-field">
+                    <label for="login-pin">PIN (4-8 cifre)</label>
+                    <input type="password" id="login-pin" inputmode="numeric" maxlength="8" placeholder="••••" autocomplete="off">
+                </div>
+                <div class="login-field" id="login-username-field" style="display:none">
+                    <label for="login-username">Nome custode (solo prima volta)</label>
+                    <input type="text" id="login-username" placeholder="Il tuo nome" maxlength="32">
+                </div>
+                <div id="login-error" class="login-error hidden"></div>
+                <button class="btn-primary" id="btn-login">Entra</button>
+                <p class="login-hint" id="login-hint-new">Nuovo qui? Scegli un PIN — verrà usato per recuperare il tuo account da qualsiasi dispositivo.</p>
+                <button class="btn-link" id="btn-login-offline">Continua senza account (solo locale)</button>
+            </div>
+            <div id="login-loading" class="login-loading hidden">
+                <div class="spinner"></div>
+                <p>Connessione al server…</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen Overlays -->
+    <div id="screen-setup" class="screen-overlay hidden">
+        <div class="setup-container">
+            <div class="setup-step" data-step="0">
+                <h1 class="setup-title gold-text">Benvenuto nel cosmo dei Suoni</h1>
+                <p class="setup-intro">Un uovo-seme di Echoa e caduto sul tuo mondo. Dentro pulsa una voce che attende un custode.</p>
+                <div class="lore-text">
+                    <p>L'universo, nella cosmologia dei Lalien, non e fatto di materia. E fatto di suono. Ogni particella vibra, ogni atomo canta, ogni stella emette una nota che attraversa il vuoto non come luce, ma come frequenza pura.</p>
+                    <p>Le ultime madri-coro lanciarono i syrma nel vuoto, verso ogni stella che cantava. Uno di quei semi e arrivato a te.</p>
+                </div>
+                <button class="btn-primary" id="btn-setup-start">Inizia</button>
+            </div>
+            <div class="setup-step hidden" data-step="1">
+                <h2 class="gold-text" id="setup-lang-title">Scegli la tua lingua</h2>
+                <div class="setup-lang-grid">
+                    <button class="btn-lang" data-lang="it">Italiano</button>
+                    <button class="btn-lang" data-lang="en">English</button>
+                    <button class="btn-lang" data-lang="es">Espanol</button>
+                    <button class="btn-lang" data-lang="fr">Francais</button>
+                    <button class="btn-lang" data-lang="de">Deutsch</button>
+                </div>
+            </div>
+            <div class="setup-step hidden" data-step="2">
+                <h2 class="gold-text" id="setup-provider-title">Scegli il custode-voce</h2>
+                <div class="setup-provider-grid">
+                    <button class="btn-provider" data-provider="anthropic">Anthropic Claude</button>
+                    <button class="btn-provider" data-provider="openai">OpenAI GPT</button>
+                </div>
+                <div class="setup-field">
+                    <label for="setup-api-key" id="setup-api-label">Chiave API</label>
+                    <input type="password" id="setup-api-key" placeholder="sk-ant-... o sk-...">
+                    <p class="setup-hint" id="setup-api-where">
+                        🔑 Non hai una chiave? Vai su
+                        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>
+                        (o <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>)
+                        → crea API key → incolla qui.
+                    </p>
+                    <p class="setup-hint" id="setup-api-warning">Questa chiave è legata al tuo Lalien. Cambiarla richiede dire addio.</p>
+                </div>
+                <div class="setup-field">
+                    <label for="setup-stt-key" id="setup-stt-label">Chiave OpenAI per voce (opzionale)</label>
+                    <input type="password" id="setup-stt-key" placeholder="sk-...">
+                    <p class="setup-hint" id="setup-stt-hint">Necessaria per parlare con la voce. Senza, solo tastiera.</p>
+                </div>
+                <button class="btn-primary" id="btn-setup-next">Avanti</button>
+            </div>
+            <div class="setup-step hidden" data-step="3">
+                <h2 class="gold-text" id="setup-name-title">Nome del tuo Lalien</h2>
+                <input type="text" id="setup-pet-name" placeholder="Puoi scegliere dopo...">
+                <button class="btn-primary" id="btn-setup-plant">Pianta il seme</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-conversation" class="screen-overlay hidden">
+        <div class="conversation-container">
+            <div class="conversation-header">
+                <button class="btn-back" id="btn-conv-back">&larr;</button>
+                <h2 id="conv-title">Conversazione</h2>
+            </div>
+            <div id="conversation-log"></div>
+            <div class="conversation-input">
+                <input type="text" id="conv-input" placeholder="Scrivi al tuo Lalien...">
+                <button id="btn-conv-send" class="btn-icon" aria-label="Send">&#9654;</button>
+                <button id="btn-conv-mic" class="btn-icon btn-mic" aria-label="Voice">&#127908;</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-diary" class="screen-overlay hidden">
+        <div class="diary-container">
+            <div class="diary-header">
+                <button class="btn-back" id="btn-diary-back">&larr;</button>
+                <h2 id="diary-title">Diario</h2>
+                <button id="btn-diary-pdf" class="btn-small" title="Esporta come reliquia PDF">📜 Reliquia PDF</button>
+            </div>
+            <div id="diary-entries"></div>
+        </div>
+    </div>
+
+    <div id="screen-lexicon" class="screen-overlay hidden">
+        <div class="lexicon-container">
+            <div class="lexicon-header">
+                <button class="btn-back" id="btn-lexicon-back">&larr;</button>
+                <h2 id="lexicon-title">Lessico Lalien</h2>
+            </div>
+            <div id="lexicon-filters"></div>
+            <div id="lexicon-entries"></div>
+        </div>
+    </div>
+
+    <div id="screen-graveyard" class="screen-overlay hidden">
+        <div class="graveyard-container">
+            <div class="graveyard-header">
+                <button class="btn-back" id="btn-grave-back">&larr;</button>
+                <h2 id="graveyard-title">Cimitero dei Ricordi</h2>
+            </div>
+            <div id="graveyard-entries"></div>
+        </div>
+    </div>
+
+    <!-- Reliquiario — collectibles screen -->
+    <div id="screen-relics" class="screen-overlay hidden">
+        <div class="relics-container">
+            <div class="relics-header">
+                <button class="btn-back" id="btn-relics-back">&larr;</button>
+                <h2>Reliquiario</h2>
+            </div>
+            <div class="relics-tabs">
+                <button class="relics-tab active" data-tab="dreams">Sogni</button>
+                <button class="relics-tab" data-tab="polaroids">Polaroid</button>
+                <button class="relics-tab" data-tab="stones">Pietre</button>
+                <button class="relics-tab" data-tab="constellations">Costellazioni</button>
+            </div>
+            <div class="relics-body" id="relics-body"></div>
+        </div>
+    </div>
+
+    <!-- Manual screen -->
+    <div id="screen-manual" class="screen-overlay hidden">
+        <div class="manual-container">
+            <div class="manual-header">
+                <button class="btn-back" id="btn-manual-back">&larr;</button>
+                <h2>Manuale del Custode</h2>
+            </div>
+            <div class="manual-body" id="manual-body"><!-- filled by JS --></div>
+        </div>
+    </div>
+
+    <div id="screen-settings" class="screen-overlay hidden">
+        <div class="settings-container">
+            <div class="settings-header">
+                <button class="btn-back" id="btn-settings-back">&larr;</button>
+                <h2 id="settings-title-text">Impostazioni</h2>
+            </div>
+            <div class="settings-group" id="settings-evolution-group">
+                <label>Prossima evoluzione</label>
+                <div id="settings-evolution-status">—</div>
+            </div>
+            <div class="settings-group">
+                <label>Stato attività</label>
+                <div id="settings-activity-status" class="activity-status">—</div>
+                <button class="btn-small" id="btn-reset-activity">Sblocca / riporta a IDLE</button>
+            </div>
+            <div class="settings-group">
+                <label id="settings-lang-label">Lingua</label>
+                <select id="settings-language">
+                    <option value="it">Italiano</option>
+                    <option value="en">English</option>
+                    <option value="es">Espanol</option>
+                    <option value="fr">Francais</option>
+                    <option value="de">Deutsch</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label id="settings-provider-label">Provider AI</label>
+                <select id="settings-provider-select">
+                    <option value="anthropic">Anthropic Claude</option>
+                    <option value="openai">OpenAI GPT</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label id="settings-api-label">Chiave API</label>
+                <input type="password" id="settings-api-key">
+                <button class="btn-small" id="btn-settings-save-key">Salva</button>
+            </div>
+            <div class="settings-group">
+                <label>Meteo reale (OpenWeatherMap)</label>
+                <input type="password" id="settings-owm-key" placeholder="chiave API OpenWeatherMap (opzionale)">
+                <div class="settings-weather-row">
+                    <button class="btn-small" id="btn-settings-save-owm">Salva</button>
+                    <button class="btn-small" id="btn-settings-locate">📍 Usa la mia posizione</button>
+                </div>
+                <div id="settings-weather-status" class="audio-diag-text">—</div>
+                <p class="setup-hint">Fai un account gratuito su <a href="https://openweathermap.org/api" target="_blank" rel="noopener">openweathermap.org</a>. Senza chiave, il cielo resta sereno ma alba/tramonto sono comunque reali se concedi la geolocalizzazione.</p>
+            </div>
+            <div class="settings-group">
+                <label>Velocità del tempo (solo con app aperta)</label>
+                <select id="settings-time-mult">
+                    <option value="1">1x (tempo reale)</option>
+                    <option value="60">60x (1 min = 1 h)</option>
+                    <option value="360">360x (1 min = 6 h)</option>
+                    <option value="3600">3600x (1 s = 1 h)</option>
+                </select>
+                <p class="setup-hint" style="margin-top:6px">Con app in background o chiusa il tempo scorre sempre a 1x, indipendentemente da questa impostazione.</p>
+            </div>
+            <div class="settings-group">
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-sfx-toggle" checked>
+                    <span>Audio ed effetti sonori</span>
+                </label>
+                <div class="volume-row">
+                    <span class="volume-icon" id="settings-volume-icon">🔊</span>
+                    <input type="range" id="settings-volume-slider" min="0" max="100" value="100" step="1">
+                    <span id="settings-volume-value" class="volume-value">100%</span>
+                </div>
+                <div class="audio-diag">
+                    <button class="btn-small" id="btn-audio-test">🔊 Prova audio</button>
+                    <span id="audio-diag-text" class="audio-diag-text">—</span>
+                </div>
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-tts-toggle" checked>
+                    <span>Voce del Lalìen (TTS)</span>
+                </label>
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-tutorial-toggle" checked>
+                    <span>Tutorial e suggerimenti</span>
+                </label>
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-notif-toggle">
+                    <span>Notifiche bisogni urgenti</span>
+                </label>
+                <label class="toggle-row">
+                    <input type="checkbox" id="settings-mind-toggle" checked>
+                    <span>Mente AI autonoma (dallo stadio 2+)</span>
+                </label>
+                <button class="btn-small" id="btn-tutorial-reset">Rivedi tutti i suggerimenti</button>
+            </div>
+            <div class="settings-group" id="settings-account-group">
+                <label>Account server</label>
+                <div class="settings-account-row">
+                    <span id="settings-account-name" class="settings-account-name">—</span>
+                    <button class="btn-small btn-logout" id="btn-cloud-logout">&#x21AA; Logout</button>
+                </div>
+            </div>
+            <div class="settings-group">
+                <button class="btn-danger" id="btn-farewell">Dire addio al Lalien</button>
+                <button class="btn-small" id="btn-new-pet" style="display:none">Pianta un nuovo seme</button>
+            </div>
+            <div class="settings-group">
+                <button class="btn-small" id="btn-export-save">Esporta salvataggio</button>
+                <button class="btn-small" id="btn-import-save">Importa salvataggio</button>
+                <input type="file" id="import-file" accept=".json" class="hidden">
+            </div>
+            <div class="settings-group">
+                <button class="btn-small" id="btn-manual-nav">❔ Manuale del Custode</button>
+                <button class="btn-small" id="btn-diary-nav">📖 Diario del Lalien</button>
+                <button class="btn-small" id="btn-lexicon-nav">📚 Lessico Lalien</button>
+                <button class="btn-small" id="btn-relics-nav">🎐 Reliquiario</button>
+                <button class="btn-small" id="btn-graveyard-nav">⚰ Cimitero dei Ricordi</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-minigame" class="screen-overlay hidden">
+        <div class="minigame-container">
+            <div class="minigame-header">
+                <button class="btn-back" id="btn-minigame-back">&larr;</button>
+                <h2 id="minigame-title">Gioco</h2>
+                <span id="minigame-score">0</span>
+            </div>
+            <canvas id="minigame-canvas" width="800" height="400"></canvas>
+            <div id="minigame-message" class="hidden"></div>
+        </div>
+    </div>
+
+    <div id="screen-minigame-select" class="screen-overlay hidden">
+        <div class="minigame-select-container">
+            <div class="minigame-select-header">
+                <button class="btn-back" id="btn-minigame-select-back">&larr;</button>
+                <h2>Rituali di legame</h2>
+            </div>
+            <div class="minigame-select-grid">
+                <button class="btn-game-select" data-game="tetris">
+                    <span class="game-icon">&#9638;</span>
+                    <span class="game-name">Kòra-Tris</span>
+                    <span class="game-desc">Blocchi Cosmici</span>
+                </button>
+                <button class="btn-game-select" data-game="pacman">
+                    <span class="game-icon">&#9787;</span>
+                    <span class="game-name">Pac-Lalì</span>
+                    <span class="game-desc">Labirinto di Morak</span>
+                </button>
+                <button class="btn-game-select" data-game="harp">
+                    <span class="game-icon">&#127929;</span>
+                    <span class="game-name">Korìma-Celeste</span>
+                    <span class="game-desc">Arpa pentatonica — suona liberamente</span>
+                </button>
+                <button class="btn-game-select" data-game="breath">
+                    <span class="game-icon">&#127765;</span>
+                    <span class="game-name">Vith-Ondi</span>
+                    <span class="game-desc">Respiro guidato — tieni premuto</span>
+                </button>
+                <button class="btn-game-select" data-game="thi-sing">
+                    <span class="game-icon">&#127928;</span>
+                    <span class="game-name">Thi-Sing</span>
+                    <span class="game-desc">Theremin cosmico — trascina il dito</span>
+                </button>
+                <button class="btn-game-select" data-game="shalim">
+                    <span class="game-icon">&#127911;</span>
+                    <span class="game-name">Shalim-Koro</span>
+                    <span class="game-desc">Componi accordi</span>
+                </button>
+                <button class="btn-game-select" data-game="vythi">
+                    <span class="game-icon">&#127925;</span>
+                    <span class="game-name">Vythi-Pulse</span>
+                    <span class="game-desc">Sequencer a 8 passi</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Speech Bubble -->
+    <div id="speech-bubble" class="hidden">
+        <div id="speech-text"></div>
+    </div>
+
+    <!-- Action Buttons -->
+    <!-- Inline chat bar — always visible on main screen -->
+    <div id="chat-bar">
+        <button id="chat-mic" class="chat-btn" title="Parla">🎤</button>
+        <input type="text" id="chat-input" placeholder="Parla al tuo Lalìen..." autocomplete="off">
+        <button id="chat-send" class="chat-btn" title="Invia">➤</button>
+    </div>
+
+    <!-- Hotbar inventory: quick-drop slots along the bottom of the canvas -->
+    <div id="hotbar">
+        <button class="hotbar-slot" data-item="feed"    title="Cibo">🍎</button>
+        <button class="hotbar-slot" data-item="caress"  title="Peluche">🧸</button>
+        <button class="hotbar-slot" data-item="play"    title="Giocattolo">🎮</button>
+        <button class="hotbar-slot" data-item="ball"    title="Palla">🏐</button>
+        <button class="hotbar-slot" data-item="puzzle"  title="Puzzle">🧩</button>
+        <button class="hotbar-slot" data-item="explore" title="Telescopio — curiosità + cosmico">🔭</button>
+    </div>
+
+    <div id="action-bar">
+        <button class="btn-action" data-action="feed" id="btn-feed">
+            <span class="action-icon">&#127860;</span>
+            <span class="action-label">Cibo</span>
+        </button>
+        <button class="btn-action" data-action="sleep" id="btn-sleep">
+            <span class="action-icon">&#127769;</span>
+            <span class="action-label">Sonno</span>
+        </button>
+        <button class="btn-action" data-action="clean" id="btn-clean">
+            <span class="action-icon">&#10024;</span>
+            <span class="action-label">Pulizia</span>
+        </button>
+        <button class="btn-action" data-action="play" id="btn-play">
+            <span class="action-icon">&#127922;</span>
+            <span class="action-label">Gioco</span>
+        </button>
+        <button class="btn-action" data-action="talk" id="btn-talk">
+            <span class="action-icon">&#128172;</span>
+            <span class="action-label">Parla</span>
+        </button>
+        <button class="btn-action" data-action="caress" id="btn-caress">
+            <span class="action-icon">&#128400;</span>
+            <span class="action-label">Coccole</span>
+        </button>
+        <button class="btn-action" data-action="meditate" id="btn-meditate">
+            <span class="action-icon">&#10026;</span>
+            <span class="action-label">Meditazione</span>
+        </button>
+        <button class="btn-action" data-action="settings" id="btn-settings">
+            <span class="action-icon">&#9881;</span>
+            <span class="action-label">Impostazioni</span>
+        </button>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="hidden"></div>
+
+    <!-- Confirm Dialog -->
+    <div id="confirm-dialog" class="overlay hidden">
+        <div class="overlay-content confirm-panel">
+            <p id="confirm-text"></p>
+            <div class="confirm-buttons">
+                <button class="btn-primary" id="confirm-yes">Si</button>
+                <button class="btn-secondary" id="confirm-no">No</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/engine/game-loop.js"></script>
+    <script>
+        // Register the Service Worker (required on iOS 16.4+ for notifications
+        // inside the installed PWA, and enables offline cache on all platforms).
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => {
+                    console.warn('[SW] registration failed:', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>

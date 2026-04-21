@@ -1,0 +1,16 @@
+{
+    "name": "Lalien Companion",
+    "short_name": "Lalien",
+    "description": "A living library from Echoa, learning your language one word at a time.",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#020A0A",
+    "theme_color": "#020A0A",
+    "icons": [
+        { "src": "icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
+        { "src": "icon-192.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "maskable" }
+    ],
+    "categories": ["games", "entertainment"],
+    "lang": "it"
+}

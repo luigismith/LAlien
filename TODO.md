@@ -1,34 +1,36 @@
-# TODO — Lalìen Companion
+# TODO — Lalìen Companion (Web)
 
-## Phase 0 — Bootstrap
-- [x] Create project directory structure
-- [x] Install arduino-cli
-- [ ] Install arduino:mbed_giga core (in progress)
-- [ ] Install Arduino libraries
-- [x] Create HAL stubs (display, touch, IMU, mic, light, SD, audio)
-- [x] Create main .ino with cooperative loop skeleton
-- [ ] Create utility headers (config.h, debug.h)
-- [ ] Create remaining module stubs (UI, pet, AI, persistence, network, i18n)
-- [ ] Compile hello world sketch
-- [ ] Test each peripheral with individual sketch
-- [ ] Document test results in HARDWARE.md
+## ✅ Core (completato)
 
-## Phase 1 — Sprite Generator
-- [ ] Write primitives.py (drawing functions)
-- [ ] Write palettes.py (color palettes per personality/stage)
-- [ ] Write stages.py (8 stage definitions)
-- [ ] Write dna.py (DNA → visual params parser)
-- [ ] Write animator.py (animation frame generation)
-- [ ] Write generate.py (entry point)
-- [ ] MVP: 2 stages, 1 variant, verify visually
-- [ ] Scale to 8 stages × 16+ variants
-- [ ] Contact sheet generation
-- [ ] Validation tests
+- [x] PWA vanilla JS con ES modules
+- [x] Canvas 2D renderer procedurale con sfondo cosmico
+- [x] Pet state machine: 10 needs, 8 stadi, 7 tipi di morte, trascendenza
+- [x] Sistema di evoluzione con trigger per età/vocabolario/interazioni
+- [x] DNA fonotattico (SHA-256 da seed casuale)
+- [x] Persistenza IndexedDB + cloud sync (NAS QNAP HTTPS)
+- [x] Login multi-account con PIN (token SHA-256)
+- [x] AI pipeline: LLM (Anthropic/OpenAI), STT Whisper, diary generator
+- [x] Sistema i18n (it/en/es/fr/de + lingua aliena ~130 parole)
+- [x] Mini-giochi: Thishi-Revosh, Miska-Vythi, Selath-Nashi
+- [x] Sfondo cosmico con stelle, nebule, particelle
+- [x] UI mobile-first: safe-area, tap targets 44px, action bar 2 righe
+- [x] Needs chips con conic-gradient ring + overlay barre complete
+- [x] Rebirth screen con epitaffio dopo la morte
+- [x] Tutorial non invasivo e disattivabile
+- [x] Web Speech API con voce evolutiva per stadio
+- [x] Sound engine procedurale (Web Audio API)
+- [x] Logout dal server in Impostazioni
+- [x] Impostazioni accessibili anche quando il pet è morto
+- [x] Pulsanti azione con urgency highlight basato sui needs
+- [x] Sfondo nebule vivide con shooting stars e tinta DNA pet
+- [x] Status bar più visibile (chip 34px, altezza 52px)
 
-## Phase 2-10
-See spec section 18 for full roadmap.
+## 🔧 Miglioramenti possibili
 
-## Known Gaps
-- `noise` Python package won't build on 3.14 — using numpy Perlin noise instead
-- Audio output needs hardware verification (no speaker on Display Shield)
-- LVGL integration needs testing on actual hardware
+- [ ] Notifiche push (Service Worker) quando i needs sono critici
+- [ ] Modalità offline completa (cached API responses)
+- [ ] Graveyard screen per vedere i pet defunti
+- [ ] Lexicon screen per la lingua aliena appresa
+- [ ] Export/import save manuale (JSON)
+- [ ] Temi alternativi (chiaro, alto contrasto)
+- [ ] Supporto multilingua completo nei testi generati dall'AI

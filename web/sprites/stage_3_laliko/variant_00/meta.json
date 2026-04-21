@@ -1,0 +1,44 @@
+{
+  "stage": 3,
+  "stage_name": "laliko",
+  "variant": 0,
+  "dna_params": {
+    "variant_index": 135,
+    "appendage_count": 6,
+    "appendage_length": 1,
+    "eye_size": 2,
+    "core_pattern": 6,
+    "body_curvature": 2,
+    "palette_warmth": 186,
+    "core_hue": 173,
+    "body_width": 0.8917647058823529,
+    "body_height": 0.7564705882352941,
+    "symmetry_seed": 13906,
+    "appendage_wave": 0.4823529411764706,
+    "eye_spacing": 0.503921568627451,
+    "mouth_size": 1
+  },
+  "animations": {
+    "love": {
+      "frames": 6,
+      "fps": 5,
+      "file": "love.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "hungry": {
+      "frames": 4,
+      "fps": 4,
+      "file": "hungry.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "sing": {
+      "frames": 6,
+      "fps": 5,
+      "file": "sing.png",
+      "frame_width": 64,
+      "frame_height": 64
+    }
+  }
+}

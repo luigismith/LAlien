@@ -1,0 +1,44 @@
+{
+  "stage": 5,
+  "stage_name": "lalivox",
+  "variant": 0,
+  "dna_params": {
+    "variant_index": 58,
+    "appendage_count": 6,
+    "appendage_length": 3,
+    "eye_size": 2,
+    "core_pattern": 7,
+    "body_curvature": 3,
+    "palette_warmth": 251,
+    "core_hue": 344,
+    "body_width": 0.6580392156862744,
+    "body_height": 0.8517647058823529,
+    "symmetry_seed": 8518,
+    "appendage_wave": 0.25882352941176473,
+    "eye_spacing": 0.4929411764705882,
+    "mouth_size": 2
+  },
+  "animations": {
+    "idle": {
+      "frames": 4,
+      "fps": 4,
+      "file": "idle.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "happy": {
+      "frames": 6,
+      "fps": 6,
+      "file": "happy.png",
+      "frame_width": 64,
+      "frame_height": 64
+    },
+    "sad": {
+      "frames": 4,
+      "fps": 3,
+      "file": "sad.png",
+      "frame_width": 64,
+      "frame_height": 64
+    }
+  }
+}

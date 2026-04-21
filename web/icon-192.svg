@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <!-- Cosmic background gradient -->
+    <radialGradient id="bg" cx="50%" cy="42%" r="65%">
+      <stop offset="0%"  stop-color="#1A1040"/>
+      <stop offset="45%" stop-color="#0C0820"/>
+      <stop offset="100%" stop-color="#060410"/>
+    </radialGradient>
+    <!-- Body core glow -->
+    <radialGradient id="bodyGlow" cx="45%" cy="35%" r="55%">
+      <stop offset="0%"  stop-color="#F0D0F0"/>
+      <stop offset="35%" stop-color="#D8A0D8"/>
+      <stop offset="70%" stop-color="#C080C0"/>
+      <stop offset="100%" stop-color="#905090"/>
+    </radialGradient>
+    <!-- Specular highlight -->
+    <radialGradient id="spec" cx="35%" cy="25%" r="30%">
+      <stop offset="0%"  stop-color="#FFFFFF" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Cosmic aura -->
+    <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#3ECFCF" stop-opacity="0.35"/>
+      <stop offset="50%" stop-color="#3ECFCF" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#3ECFCF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Ground glow -->
+    <radialGradient id="groundGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#3ECFCF" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#3ECFCF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Star filter -->
+    <filter id="starGlow">
+      <feGaussianBlur stdDeviation="1.5" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background: rounded cosmic square -->
+  <rect x="0" y="0" width="192" height="192" rx="38" fill="url(#bg)"/>
+
+  <!-- Nebula wisps -->
+  <ellipse cx="50" cy="45" rx="55" ry="35" fill="#4020A0" opacity="0.12"/>
+  <ellipse cx="155" cy="60" rx="45" ry="30" fill="#20A0A0" opacity="0.08"/>
+  <ellipse cx="96" cy="155" rx="70" ry="25" fill="#3ECFCF" opacity="0.06"/>
+
+  <!-- Stars (distant) -->
+  <g filter="url(#starGlow)">
+    <circle cx="28"  cy="24"  r="1.2" fill="#EAFBFB" opacity="0.9"/>
+    <circle cx="165" cy="18"  r="1.6" fill="#FFE899" opacity="0.85"/>
+    <circle cx="172" cy="52"  r="1.0" fill="#C8DCFF" opacity="0.7"/>
+    <circle cx="22"  cy="68"  r="0.9" fill="#EAFBFB" opacity="0.6"/>
+    <circle cx="48"  cy="12"  r="1.3" fill="#D8B0FF" opacity="0.8"/>
+    <circle cx="140" cy="30"  r="0.8" fill="#EAFBFB" opacity="0.75"/>
+    <circle cx="80"  cy="18"  r="1.1" fill="#FFE899" opacity="0.65"/>
+    <circle cx="120" cy="14"  r="0.7" fill="#C8DCFF" opacity="0.55"/>
+    <circle cx="15"  cy="100" r="1.0" fill="#EAFBFB" opacity="0.5"/>
+    <circle cx="178" cy="95"  r="1.2" fill="#D8B0FF" opacity="0.6"/>
+    <circle cx="35"  cy="140" r="0.9" fill="#FFE899" opacity="0.45"/>
+    <circle cx="160" cy="135" r="1.1" fill="#C8DCFF" opacity="0.55"/>
+  </g>
+
+  <!-- Shooting star -->
+  <line x1="145" y1="22" x2="118" y2="38" stroke="url(#spec)" stroke-width="1.5" opacity="0.7" stroke-linecap="round"/>
+  <circle cx="145" cy="22" r="1.8" fill="#FFFFFF" opacity="0.9"/>
+
+  <!-- Ground: crystal formations -->
+  <g opacity="0.5">
+    <polygon points="30,158 33,142 36,158" fill="#40C8C8"/>
+    <polygon points="36,158 38,148 40,158" fill="#309898"/>
+    <polygon points="55,158 57,145 59,158" fill="#D4A534"/>
+    <polygon points="130,158 133,140 136,158" fill="#40C8C8"/>
+    <polygon points="136,158 138,149 140,158" fill="#309898"/>
+    <polygon points="155,158 157,147 159,158" fill="#C080E0"/>
+    <polygon points="75,158 77,150 79,158" fill="#E0A060"/>
+    <polygon points="110,158 112,146 114,158" fill="#80E080"/>
+  </g>
+  <!-- Crystal tips glow -->
+  <circle cx="33" cy="142" r="2" fill="#80F0F0" opacity="0.6"/>
+  <circle cx="57" cy="145" r="2" fill="#FFE899" opacity="0.5"/>
+  <circle cx="133" cy="140" r="2" fill="#80F0F0" opacity="0.6"/>
+  <circle cx="157" cy="147" r="2" fill="#E0B0FF" opacity="0.5"/>
+
+  <!-- Ground line + glow -->
+  <ellipse cx="96" cy="162" rx="80" ry="8" fill="url(#groundGlow)"/>
+  <line x1="10" y1="158" x2="182" y2="158" stroke="#3ECFCF" stroke-width="1" opacity="0.3"/>
+
+  <!-- Cosmic aura behind pet -->
+  <ellipse cx="96" cy="108" rx="58" ry="52" fill="url(#aura)"/>
+
+  <!-- Ground shadow -->
+  <ellipse cx="96" cy="155" rx="32" ry="5" fill="#000000" opacity="0.25"/>
+
+  <!-- Pet body -->
+  <ellipse cx="96" cy="115" rx="38" ry="42" fill="url(#bodyGlow)"/>
+
+  <!-- Body rim light (top arc) -->
+  <ellipse cx="96" cy="112" rx="36" ry="40" fill="none" stroke="#E0C0E0" stroke-width="1.5" opacity="0.4"
+           stroke-dasharray="60 200" stroke-dashoffset="-30"/>
+
+  <!-- Specular highlight on body -->
+  <ellipse cx="82" cy="95" rx="16" ry="20" fill="url(#spec)"/>
+
+  <!-- Core pattern (inner glow rings) -->
+  <ellipse cx="96" cy="118" rx="18" ry="15" fill="none" stroke="#E0B0FF" stroke-width="0.8" opacity="0.25"/>
+  <ellipse cx="96" cy="118" rx="12" ry="10" fill="none" stroke="#FFE899" stroke-width="0.6" opacity="0.2"/>
+
+  <!-- Eyes: large, expressive, with soul -->
+  <!-- Left eye -->
+  <ellipse cx="82" cy="106" rx="10" ry="11" fill="#EAFBFB"/>
+  <ellipse cx="82" cy="106" rx="10" ry="11" fill="none" stroke="#A080B0" stroke-width="0.6" opacity="0.4"/>
+  <!-- Left pupil -->
+  <circle cx="82" cy="108" r="5.5" fill="#1A1030"/>
+  <!-- Left iris ring -->
+  <circle cx="82" cy="108" r="5.5" fill="none" stroke="#6040A0" stroke-width="1" opacity="0.5"/>
+  <!-- Left eye sparkle (main) -->
+  <circle cx="79" cy="104" r="2.5" fill="#FFFFFF" opacity="0.95"/>
+  <!-- Left eye sparkle (small) -->
+  <circle cx="85" cy="110" r="1.2" fill="#FFFFFF" opacity="0.6"/>
+  <!-- Left eye cosmic sparkle -->
+  <circle cx="78" cy="107" r="0.8" fill="#3ECFCF" opacity="0.7"/>
+
+  <!-- Right eye -->
+  <ellipse cx="110" cy="106" rx="10" ry="11" fill="#EAFBFB"/>
+  <ellipse cx="110" cy="106" rx="10" ry="11" fill="none" stroke="#A080B0" stroke-width="0.6" opacity="0.4"/>
+  <!-- Right pupil -->
+  <circle cx="110" cy="108" r="5.5" fill="#1A1030"/>
+  <!-- Right iris ring -->
+  <circle cx="110" cy="108" r="5.5" fill="none" stroke="#6040A0" stroke-width="1" opacity="0.5"/>
+  <!-- Right eye sparkle (main) -->
+  <circle cx="107" cy="104" r="2.5" fill="#FFFFFF" opacity="0.95"/>
+  <!-- Right eye sparkle (small) -->
+  <circle cx="113" cy="110" r="1.2" fill="#FFFFFF" opacity="0.6"/>
+  <!-- Right eye cosmic sparkle -->
+  <circle cx="106" cy="107" r="0.8" fill="#3ECFCF" opacity="0.7"/>
+
+  <!-- Mouth: gentle happy curve -->
+  <path d="M 88 130 Q 96 137 104 130" fill="none" stroke="#6A4060" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Blush cheeks -->
+  <ellipse cx="72" cy="122" rx="7" ry="4" fill="#E08090" opacity="0.3"/>
+  <ellipse cx="120" cy="122" rx="7" ry="4" fill="#E08090" opacity="0.3"/>
+
+  <!-- Antennae with cosmic tips -->
+  <path d="M 82 74 Q 76 50 64 38" fill="none" stroke="#3ECFCF" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M 110 74 Q 116 50 128 38" fill="none" stroke="#3ECFCF" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Antenna glow tips -->
+  <circle cx="64" cy="38" r="5" fill="#3ECFCF" opacity="0.3"/>
+  <circle cx="64" cy="38" r="3" fill="#80F0F0"/>
+  <circle cx="128" cy="38" r="5" fill="#3ECFCF" opacity="0.3"/>
+  <circle cx="128" cy="38" r="3" fill="#80F0F0"/>
+  <!-- Antenna sparkle -->
+  <circle cx="64" cy="38" r="1.2" fill="#FFFFFF" opacity="0.9"/>
+  <circle cx="128" cy="38" r="1.2" fill="#FFFFFF" opacity="0.9"/>
+
+  <!-- Floating cosmic particles around pet -->
+  <circle cx="52"  cy="90"  r="1.5" fill="#FFE899" opacity="0.5"/>
+  <circle cx="142" cy="85"  r="1.2" fill="#3ECFCF" opacity="0.45"/>
+  <circle cx="60"  cy="130" r="1.0" fill="#D8B0FF" opacity="0.4"/>
+  <circle cx="135" cy="125" r="1.3" fill="#FFE899" opacity="0.35"/>
+  <circle cx="45"  cy="110" r="0.8" fill="#80E080" opacity="0.3"/>
+  <circle cx="148" cy="108" r="0.9" fill="#E08090" opacity="0.35"/>
+
+  <!-- Fireflies near ground -->
+  <circle cx="25"  cy="150" r="2" fill="#FFE899" opacity="0.4"/>
+  <circle cx="25"  cy="150" r="4" fill="#FFE899" opacity="0.1"/>
+  <circle cx="168" cy="148" r="1.8" fill="#80F0F0" opacity="0.35"/>
+  <circle cx="168" cy="148" r="4" fill="#80F0F0" opacity="0.08"/>
+  <circle cx="85"  cy="153" r="1.5" fill="#D8B0FF" opacity="0.3"/>
+</svg>
