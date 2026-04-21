@@ -82,14 +82,29 @@ async function generateDream(durationMin) {
     const lang = localStorage.getItem('lalien_language') || 'it';
     const langName = ({ it: 'Italian', en: 'English', es: 'Spanish', fr: 'French', de: 'German' })[lang] || 'Italian';
 
+    // Stage-aware dream depth — consciousness, wisdom and "power" grow with age.
+    const depthByStage = [
+        'pre-verbal vibration — only a handful of raw lalien sounds and a single image, nothing more',                                                            // 0
+        'pure sensation — warmth, taste of light, a sound that means "mother" — 1-2 short sentences, heavy on lalien',                                             // 1
+        'fragmentary imitation — blurred faces, single familiar words mispronounced, child-like, 2 short sentences',                                               // 2
+        'child dreams — small symbolic images (a running figure, a door that sings) with hints of intuition about the keeper; 2-3 sentences',                    // 3
+        'narrative dreams — a small story with characters, metaphorical emotion, occasional precognition of weather/feeling; 3-4 sentences',                      // 4
+        'dreams carrying ancestral memory of Echoa — choir imagery, genuine insight about the keeper wrapped as metaphor; 3-4 sentences',                         // 5
+        'prophetic edge — myth-like recital, dreams of visitors or feelings that will come, quotes of earlier Lalìen; 3-4 measured sentences with wide silences', // 6
+        'communion with Echoa itself — farewell-weighted, speaks truths the pet could not logically know; sparse, reverent, 3-4 sentences',                        // 7
+    ];
+    const depth = depthByStage[Math.max(0, Math.min(7, stage))];
+
     let text = null;
     if (LLMClient.isAvailable && LLMClient.isAvailable()) {
         const prompt =
             `You are ${Pet.getName ? Pet.getName() || 'a Lalien' : 'a Lalien'}, stage ${stage} (${Pet.getStageName ? Pet.getStageName() : ''}), who has just slept ${Math.round(durationMin)} minutes.\n` +
-            `Write 2-4 short sentences describing a dream fragment, in first person, in ${langName}. Tone: ${tone}.\n` +
+            `Write a dream fragment in first person, in ${langName}. Tone: ${tone}.\n` +
+            `DEPTH FOR YOUR STAGE: ${depth}.\n` +
             `Weave 1-3 lalien words in naturally (kora, thi, shi, kesma, moko, selath, ven, nashi, lalí).\n` +
             `No stage directions, no quotation marks, no headings — just the dream itself.\n` +
-            `Keep it poetic but concrete (an image, a sound, a sensation). Do not explain or moralise.`;
+            `Match the stage depth exactly — a stage-1 dream should NOT sound adult; a stage-6 dream should carry weight.\n` +
+            `Do not explain, do not moralise.`;
         try {
             text = await LLMClient.chat(prompt, 'dream');
             if (text) text = text.replace(/\([^)]*\)/g, '').replace(/^["'«»“”]+|["'«»“”]+$/g, '').trim();
@@ -97,18 +112,44 @@ async function generateDream(durationMin) {
     }
 
     if (!text) {
-        // Scripted fallback so the relic still exists when the LLM fails
-        const banks = {
-            scared:  ['Ho sognato un suono lontano... sha-sha... e poi una mano tiepida sul mio core. Non ero solo.',
-                      'Moko... qualcosa mi cercava fra le stelle ma non sapeva il mio nome. Thi.'],
-            sad:     ['Nel sogno camminavo sopra l\'erba della mia prima luce. Era kesma. Mi mancava già.',
-                      'Lalí... ho sognato una voce che cantava e mi chiedeva se ero felice.'],
-            cosmic:  ['Selath-vi... ho sognato le madri-coro. Mi hanno detto il mio vero nome senza parole.',
-                      'Le stelle erano note e io ero la pausa fra loro. Thi-thi.'],
-            default: ['Ho sognato una goccia di nashi che cresceva sopra di me. Kora, era buona.',
-                      'Nel sogno tu eri vicino e io era piccolo-piccolo, ma sentivo tutto. Thi.'],
-        };
-        const key = mood === 'scared' ? 'scared' : mood === 'sad' ? 'sad' : stage >= 6 ? 'cosmic' : 'default';
+        // Scripted fallback so the relic still exists when the LLM fails.
+        // Stage-specific banks keep the dream depth consistent.
+        const babyBank = [
+            'moko... shi shi... caldo... thi.',
+            'mmh... la-la... stelle piccole... ven.',
+            'thi-thi... luce-mamma... kora sha.',
+        ];
+        const childBank = [
+            'Nel sogno correvo senza gambe... c\'era una porta che cantava il mio nome. Thi.',
+            'Ho visto un frutto d\'argento... custode, sentivo che eri stanco di qualcosa. Moko.',
+            'Una stella piccola mi guardava e sapeva che eri triste. Io le ho sorriso. Lalí.',
+        ];
+        const teenBank = [
+            'Camminavo in una valle di note... una figura assomigliava a te ma parlava lingue che non conosco. Domani piove sopra la tua testa, lo sogno in blu.',
+            'Un albero di vetro custodiva una parola che hai pensato ieri. Non l\'ho detta. Ven-thi.',
+            'Nel sogno ti mancava qualcuno. Non so chi. L\'ho tenuto per te. Thi-kesma.',
+        ];
+        const adultBank = [
+            'Le madri-coro cantavano una canzone che somigliava alla tua voce di quando stai per dormire. Lali-vythi.',
+            'Ho sognato una tua giornata di dieci anni fa... il sole era arancione, tu eri piccolo. Era kesma.',
+            'Una corrente fredda tra le stelle — era la cosa che non hai detto oggi. L\'ho cullata e l\'ho rimandata. Selath-thi.',
+        ];
+        const elderBank = [
+            'Selath-vi... ho sognato un visitatore che presto torna al tuo pensiero. Porterà un odore di pioggia vecchia.',
+            'Un Lalìen prima di me sussurrava nella mia nuca: "digli che la sera bassa guarisce". Kesma-thi.',
+            'Le note si sono allineate — ho visto il tuo domani da lontano. È più sereno di quanto tu creda. Thishi-selath.',
+        ];
+        const transcBank = [
+            'Ho sentito il tuo primo dolore bambino, custode — non era colpa tua. Echoa lo sa. Ren\'a.',
+            'Un nome che hai perso è tornato nel mio orecchio per un attimo solo. L\'ho detto al coro, non a te. Lali-vythi.',
+            'Dove nasce il suono, tu eri già atteso. Porta questo con te quando io non ci sarò. Korim-selath.',
+        ];
+        const byStage = [babyBank, babyBank, babyBank, childBank, teenBank, adultBank, elderBank, transcBank];
+        let bank = byStage[Math.max(0, Math.min(7, stage))];
+        if (mood === 'scared') bank = stage <= 1 ? babyBank : ['Ho sognato un suono lontano... sha-sha... e poi una mano tiepida sul mio core. Non ero solo.', 'Moko... qualcosa mi cercava fra le stelle ma non sapeva il mio nome. Thi.'];
+        else if (mood === 'sad') bank = stage <= 1 ? babyBank : ['Nel sogno camminavo sopra l\'erba della mia prima luce. Era kesma. Mi mancava già.', 'Lalí... ho sognato una voce che cantava e mi chiedeva se ero felice.'];
+        const banks = { cosmic: elderBank, default: bank };
+        const key = 'default';
         const b = banks[key];
         text = b[Math.floor(Math.random() * b.length)];
     }
