@@ -126,20 +126,24 @@ Nessun bundler, nessun npm. JS vanilla con moduli ES6 nativi.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/01-dream-meditazione.png" alt="Dream world reply" width="280"></td>
-<td><img src="docs/screenshots/03-day-home.png" alt="Day scene with cottage" width="280"></td>
+<td><img src="docs/screenshots/03-day-home.png" alt="Day scene with cottage" width="260"></td>
+<td><img src="docs/screenshots/05-teen-day.png" alt="Teenage pet daytime" width="260"></td>
+<td><img src="docs/screenshots/04-meditation-night.png" alt="Meditation at night" width="260"></td>
 </tr>
 <tr>
-<td align="center"><sub>Risposta dal mondo del sogno</sub></td>
-<td align="center"><sub>Vista diurna con la casetta</sub></td>
+<td align="center"><sub>Pet bambino, casetta, sole pomeridiano</sub></td>
+<td align="center"><sub>Lali-ren di giorno con cristalli e lucciole</sub></td>
+<td align="center"><sub>Meditazione notturna con luna e stelle</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/04-cosmic-dream.png" alt="Cosmic dream narrative" width="280"></td>
-<td><img src="docs/screenshots/05-blue-sky-dream.png" alt="Blue sky dream" width="280"></td>
+<td><img src="docs/screenshots/08-transcendent-night.png" alt="Transcendent stage at night" width="260"></td>
+<td><img src="docs/screenshots/06-shalim-synth.png" alt="Shalim-Koro chord synth" width="260"></td>
+<td><img src="docs/screenshots/07-vith-ondi.png" alt="Vith-Ondi breathing meditation" width="260"></td>
 </tr>
 <tr>
-<td align="center"><sub>Sogno cosmico sulle storie di Echòa</sub></td>
-<td align="center"><sub>Cielo azzurro e visione onirica</sub></td>
+<td align="center"><sub>Stadio trascendente con aurora</sub></td>
+<td align="center"><sub>Shalim-Koro — chord synth Orchid-like</sub></td>
+<td align="center"><sub>Vith-Ondi — respiro guidato</sub></td>
 </tr>
 </table>
 

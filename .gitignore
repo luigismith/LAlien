@@ -48,3 +48,6 @@ ehthumbs.db
 
 # Logs
 docs/*.log
+
+# Screenshot helper (dev-only utility)
+.capture_helper.py
