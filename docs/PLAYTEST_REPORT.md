@@ -125,14 +125,59 @@ Su desktop l'app usa una frazione dello schermo. Aggiungerei una modalità **ful
 
 ---
 
+## 🌱→⚰ Full life-cycle test (eseguito dopo il round iniziale)
+
+Un secondo round ha simulato la vita COMPLETA del pet, dalla schiusa al
+finale di ogni tipo di morte:
+
+**Evoluzione 0 → 7** (tutti gli 8 stadi raggiunti):
+
+| Transizione      | Ore di gioco cumulative |
+| ---------------- | ----------------------- |
+| Syrma → Lali-na  | 400 h                   |
+| Lali-na → shi    | 400 h                   |
+| Lali-shi → ko    | 800 h                   |
+| Lali-ko → ren    | 1200 h                  |
+| Lali-ren → vox   | 2800 h (il salto più grande — teen → adulto, 4 boost necessari) |
+| Lali-vox → mere  | 3600 h                  |
+| Lali-mere → thishi | 3600 h                |
+
+Total path ~3600 ore di gioco per raggiungere lo stadio trascendente.
+Ragionevole per una vita lunga; a 3600× multiplier = ~1 ora reale.
+
+**Morti testate**:
+
+| Scenario                              | Risultato                           |
+| ------------------------------------- | ----------------------------------- |
+| Pet giovane + cure perfette × 48h     | ✅ **TRANSCENDENCE** al 48h          |
+| Pet anziano (>2500h) + cure perfette  | 🐛 **OLD_AGE** invece di TRANSCEND · **ORA FISSATO** |
+| Pet anziano + cure basse              | ✅ OLD_AGE (corretto)                |
+| Stage 4 + KORA=0 × 24h                | ✅ VELIN (fame)                      |
+
+### 🐛 B4 — Trascendenza irraggiungibile per pet anziani (FIXATO)
+
+**Severity: alta.** Un pet che raggiungeva lo stadio 7 DOPO l'età-soglia
+(2500h) non poteva mai trascendere: OLD_AGE fire at each tick prima che
+TRANSCENDENCE potesse accumulare i 48h di sustain. La "miglior fine" era
+di fatto bloccata per i pet anziani.
+
+**Fix applicato**: aggiunto flag `transcendingNow` che marca quando il pet
+soddisfa in questo tick le condizioni di trascendenza. OLD_AGE rispetta
+quel flag e non interrompe una trascendenza in corso. Il tracker
+`transcendSustainStart` ora usa `-1` come sentinel di "non in corso" per
+evitare ambiguità con gameTime=0.
+
+---
+
 ## 🎯 Prioritizzazione suggerita
 
 | Priority | Item  | Motivo                                                                 |
 | :------: | ----- | ---------------------------------------------------------------------- |
-| 🔴 alto  | B1    | Bug oggettivo e confonde il player: "sazio" quando affamato            |
-| 🔴 alto  | B2    | Bilanciamento narrativo rotto: SECURITY cresce mentre si muore         |
-| 🟡 medio | U4    | Opacità dei blocchi di evoluzione                                      |
-| 🟡 medio | B3    | Rinomina semantica 'window' → 'crown'                                  |
+| ✅ FIX   | B1    | "sazio" quando affamato — FIXATO                                       |
+| ✅ FIX   | B2    | SECURITY cresce durante crisi — FIXATO (gate su HEALTH>35 + othersAvg>25) |
+| ✅ FIX   | B4    | Trascendenza irraggiungibile per pet anziani — FIXATO                  |
+| 🟡 medio | U4    | Opacità dei blocchi di evoluzione (ETA reale mancante)                 |
+| 🟡 medio | B3    | Rinomina semantica 'window' → 'crown' nel pod                          |
 | 🟡 medio | I2    | Time-lapse cimetrale — forte valore emotivo, scope medio               |
 | 🟢 basso | I1    | Customizzazione pod (drag items)                                       |
 | 🟢 basso | I6    | Dialogo con pet defunto nei sogni                                      |

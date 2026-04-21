@@ -57,7 +57,7 @@ export const Death = {
         boredomStart: 0,
         heartbreakBondHighTime: 0,
         heartbreakLastBond: 0,
-        transcendSustainStart: 0,
+        transcendSustainStart: -1,   // -1 = not currently ascending
         lastInteractionTime: 0,
     },
 
@@ -70,7 +70,7 @@ export const Death = {
         this.trackers = {
             starvationStart: 0, neglectStart: 0, lonelinessStart: 0,
             sicknessStart: 0, boredomStart: 0, heartbreakBondHighTime: 0,
-            heartbreakLastBond: 0, transcendSustainStart: 0, lastInteractionTime: 0,
+            heartbreakLastBond: 0, transcendSustainStart: -1, lastInteractionTime: 0,
         };
         this.sequencePlaying = false;
         this.sequenceComplete = false;
@@ -80,23 +80,28 @@ export const Death = {
     checkDeathTriggers(stage, ageHours, needs, gameTimeSeconds, totalInteractions) {
         const t = this.trackers;
 
-        // TRANSCENDENCE
+        // TRANSCENDENCE + "is ascending right now" flag used by OLD_AGE gate
+        let transcendingNow = false;
         if (stage >= 7) {
             if (needs[NeedType.AFFECTION] >= TRANSCEND_BOND_MIN &&
                 needs[NeedType.COSMIC] >= TRANSCEND_COSMIC_MIN &&
                 allNeedsAbove(needs, TRANSCEND_ALL_MIN)) {
-                if (t.transcendSustainStart === 0) {
+                transcendingNow = true;
+                if (t.transcendSustainStart < 0) {
                     t.transcendSustainStart = gameTimeSeconds;
                 } else if ((gameTimeSeconds - t.transcendSustainStart) >= TRANSCEND_SUSTAIN_S) {
                     return DeathType.TRANSCENDENCE;
                 }
             } else {
-                t.transcendSustainStart = 0;
+                t.transcendSustainStart = -1;
             }
         }
 
-        // OLD_AGE
-        if (stage >= 7 && ageHours >= OLD_AGE_THRESHOLD_HOURS) {
+        // OLD_AGE — BUT never interrupt a transcendence in progress. A
+        // perfectly-cared-for old pet must be allowed to ascend rather than
+        // dying of age mid-ritual. transcendingNow is true every tick the
+        // pet currently satisfies the transcendence requirements.
+        if (stage >= 7 && ageHours >= OLD_AGE_THRESHOLD_HOURS && !transcendingNow) {
             return DeathType.OLD_AGE;
         }
 
