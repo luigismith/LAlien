@@ -138,20 +138,21 @@ export const Shelter = {
         const PX = 3;
         const snap = (v) => Math.round(v / PX) * PX;
 
-        // Unified palette — 6 colours total for the whole cottage so nothing
-        // clashes. Wood/timber tones pair with stone; roof stays in its own
-        // warm terracotta ramp; only the window glow breaks into yellow.
+        // Bioluminescent alien palette — rhymes with the pet sprite, the
+        // ground crystals and the cosmic sky. Cold teal-indigo body, warm
+        // golden accents (matching UI gold), crystalline dome shifting with
+        // the pet's own hue. No Tudor stone / red tile / brown wood.
         const PAL = {
-            stone:       '#B5A886',
-            stoneDark:   '#8E8166',
-            timber:      '#3C2616',
-            timberHi:    '#5A3A22',
-            roof:        '#7A3628',
-            roofHi:      '#9E4634',
-            roofShadow:  '#52231A',
-            glow:        '#FFD06A',
-            glowDim:     '#C89650',
-            smoke:       '#D6CEC0',
+            stone:       '#2B3C4E',                       // "carapace" base
+            stoneDark:   '#1A2833',                       // deep shadow
+            timber:      '#D4A534',                       // gold accents
+            timberHi:    '#FFE899',                       // bright gold
+            roof:        `hsl(${(petHue + 10) % 360}, 45%, 38%)`,  // crystal dome base
+            roofHi:      `hsl(${(petHue + 20) % 360}, 60%, 58%)`,  // crystal dome highlight
+            roofShadow:  `hsl(${(petHue + 10) % 360}, 50%, 22%)`,  // crystal dome shadow
+            glow:        `hsl(${(petHue + 40) % 360}, 80%, 72%)`,  // interior life-light
+            glowDim:     `hsl(${(petHue + 40) % 360}, 50%, 50%)`,
+            smoke:       '#B8C8E0',                       // cosmic mist
             runeHue:     petHue,
         };
 

@@ -90,7 +90,10 @@ export const DiaryGenerator = {
 
         try {
             const events = this.getMemorySummary(5);
-            const prompt = SystemPrompt.buildDiaryPrompt(events);
+            // Pass the last 3 entries so the prompt can explicitly ask the
+            // LLM to avoid repeating themes, opening words, or imagery.
+            const recent = _diary.slice(-3);
+            const prompt = SystemPrompt.buildDiaryPrompt(events, recent);
             const entry = await LLMClient.generateDiary(prompt);
 
             if (entry) {

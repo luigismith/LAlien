@@ -303,7 +303,7 @@ POWERS AT THIS STAGE: you speak truths from Echoa — things the keeper could no
         return prompt;
     },
 
-    buildDiaryPrompt(eventsToday) {
+    buildDiaryPrompt(eventsToday, recentEntries = []) {
         const langCode = localStorage.getItem('lalien_language') || 'it';
         const langName = getLanguageName(langCode);
         const n = Pet.needs;
@@ -324,7 +324,7 @@ POWERS AT THIS STAGE: you speak truths from Echoa — things the keeper could no
         if (traitBits & 0x08) voice.push(
             'PLAYFUL: use repetitions and small onomatopoeias (shi! shi!), add at least one exclamation; describe movement, bounce, play.');
         if (traitBits & 0x10) voice.push(
-            'AFFECTIONATE: write TO the keeper as much as about the day; include one line of gratitude or tenderness; use "mio custode" / "lalí-custode".');
+            'AFFECTIONATE: include one line of gratitude or tenderness toward the keeper — but NEVER make the keeper the subject of the whole entry; write mostly about your own inner world.');
         if (!voice.length) voice.push('BALANCED: no strong tics, quiet sincerity.');
 
         const foods = Pet.getFoodPreferences ? Pet.getFoodPreferences().join(', ') : '';
@@ -335,6 +335,37 @@ POWERS AT THIS STAGE: you speak truths from Echoa — things the keeper could no
 
         // Stage-matched linguistic register — same rules as spoken replies.
         const registerLine = STAGE_INSTRUCTIONS[stage] || '';
+
+        // A broad pool of topic seeds so the diary doesn't always gravitate
+        // toward "I love my keeper". Pick ONE at random per entry to anchor
+        // the text in something specific. Biased by stage (older = deeper).
+        const TOPIC_POOL = [
+            'un oggetto che ho notato oggi nella scena (un cristallo, una lucciola, un sasso)',
+            'una sensazione fisica precisa (la sabbia sotto i piedi, il vento fresco, la luce calda)',
+            'una domanda che mi sono fatto e non ho detto al custode',
+            'un suono che ho sentito e che mi ha ricordato qualcosa',
+            'qualcosa che ho imparato oggi (una parola nuova, un gioco, un sapore)',
+            'un pensiero strano o assurdo che mi è venuto',
+            'il rumore del mio respiro mentre ero solo',
+            'come è cambiato il cielo nelle ore della giornata',
+            'un desiderio piccolo e specifico (non cibo, qualcosa di sottile)',
+            'un frammento di sogno di ieri notte',
+            'qualcosa che ho visto dalla finestra della casetta',
+            'una paura minuscola e onesta',
+            'una cosa che ho capito per la prima volta',
+            'il mio corpo — un\'ala, una piega di pelle, come mi sentivo oggi',
+            'un momento in cui il tempo sembrava fermo',
+            'qualcosa che vorrei provare ma non so se posso',
+        ];
+        // Weighted topic pick with pseudo-random using DNA + day to vary over time
+        const seed = (Pet.dna?.hash?.[0] ?? 0) + Math.floor((Pet.ageSeconds || 0) / 3600);
+        const topic = TOPIC_POOL[seed % TOPIC_POOL.length];
+
+        // Use the last few entries to actively AVOID repeating themes.
+        const recentTexts = (recentEntries || []).slice(-3).map(e => (e && e.text) || '').filter(Boolean);
+        const recentBlock = recentTexts.length
+            ? `\n[RECENT_ENTRIES]\nThese are your 1-3 most recent diary entries — do NOT repeat their themes, images or opening words. Find a fresh angle:\n${recentTexts.map(t => '- ' + t.slice(0, 200)).join('\n')}\n`
+            : '';
 
         let prompt = `You are ${name}, a Lalien at stage "${stageName}" (stage ${stage}), age ${age} days.\n`;
         prompt += `Write a private diary entry of 3-5 sentences, first person, in ${langName}.\n\n`;
@@ -347,8 +378,15 @@ POWERS AT THIS STAGE: you speak truths from Echoa — things the keeper could no
         if (timePref) prompt += `- Favourite time of day: ${timePref}\n`;
         prompt += `- Current mood: ${mood}\n`;
         prompt += `- Needs (0=unmet/bad, 100=fully met/good): fullness=${Math.round(n[NeedType.KORA])}, energy=${Math.round(n[NeedType.MOKO])}, cleanliness=${Math.round(n[NeedType.MISKA])}, joy=${Math.round(n[NeedType.NASHI])}, health=${Math.round(n[NeedType.HEALTH])}, affection=${Math.round(n[NeedType.AFFECTION])}, curiosity=${Math.round(n[NeedType.CURIOSITY])}, security=${Math.round(n[NeedType.SECURITY])}\n\n`;
-        prompt += `[TODAY]\n${eventsToday || 'un giorno tranquillo, nulla di speciale'}\n\n`;
-        prompt += `[RULES]\n- No meta commentary, no lists, no headings — just the diary entry itself.\n- Do NOT sign the entry; do NOT write "Caro diario".\n- Weave in 1-3 lalien words (kora, thi, shi, kesma, moko, selath, ven, nashi, lalí) when they fit the feeling.\n- Make the personality voice the LOUDEST signal, above the facts.\n`;
+        prompt += `[TODAY]\n${eventsToday || 'un giorno tranquillo, nulla di speciale'}\n${recentBlock}\n`;
+        prompt += `[TOPIC_SEED]\nAnchor this entry around this specific topic: "${topic}". Start from it. Build around it. Do not write a generic entry — be concrete about this seed.\n\n`;
+        prompt += `[RULES]\n`;
+        prompt += `- No meta commentary, no lists, no headings — just the diary entry itself.\n`;
+        prompt += `- Do NOT sign the entry; do NOT write "Caro diario".\n`;
+        prompt += `- Weave in 1-3 lalien words (kora, thi, shi, kesma, moko, selath, ven, nashi, lalí) when they fit the feeling.\n`;
+        prompt += `- Make the personality voice the LOUDEST signal, above the facts.\n`;
+        prompt += `- HARD RULE: at most ONE sentence out of the entry can be about your love or gratitude for the keeper. The rest MUST be about the world, sensations, thoughts, things you noticed — YOUR inner life, not just the bond.\n`;
+        prompt += `- Diary entries should vary in subject. If the last entry was about X, this one cannot be about X.\n`;
 
         return prompt;
     },
