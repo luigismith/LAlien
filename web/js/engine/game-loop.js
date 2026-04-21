@@ -617,6 +617,46 @@ async function resumeAfterLogin(serverOnline) {
             }
             try { SoundEngine.playChirp && SoundEngine.playChirp(); } catch (_) {}
             showToast('La luna ascolta. Il Lalìen respira piano.');
+        } else if (ev.kind === 'moth') {
+            if (Renderer) {
+                Renderer.scatterMoths();
+                Renderer.sparkleAt(ev.x, ev.y, 300);
+            }
+            if (Pet.isAlive && Pet.isAlive()) {
+                Pet.needs[NeedType.CURIOSITY] = clamp(Pet.needs[NeedType.CURIOSITY] + 3);
+                Pet.needs[NeedType.NASHI]     = clamp(Pet.needs[NeedType.NASHI]     + 2);
+            }
+            // Soft swarm-chime
+            try {
+                const ctx = SoundEngine.getAudioContext && SoundEngine.getAudioContext();
+                const master = SoundEngine.getMasterBus && SoundEngine.getMasterBus();
+                if (ctx && master) {
+                    const t = ctx.currentTime;
+                    [880, 1174, 1760].forEach((hz, i) => {
+                        const o = ctx.createOscillator();
+                        const g = ctx.createGain();
+                        o.type = 'sine'; o.frequency.value = hz;
+                        g.gain.setValueAtTime(0.0001, t + i * 0.03);
+                        g.gain.exponentialRampToValueAtTime(0.09, t + i * 0.03 + 0.008);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.03 + 0.9);
+                        o.connect(g).connect(master);
+                        o.start(t + i * 0.03); o.stop(t + i * 0.03 + 1.0);
+                    });
+                }
+            } catch (_) {}
+            showToast('Uno stormo di farfalle-eco si disperde...');
+        } else if (ev.kind === 'shooting-star') {
+            if (Renderer) {
+                Renderer.catchShootingStar();
+                Renderer.sparkleAt(ev.x, ev.y, 50);
+            }
+            if (Pet.isAlive && Pet.isAlive()) {
+                Pet.needs[NeedType.COSMIC]   = clamp(Pet.needs[NeedType.COSMIC]   + 5);
+                Pet.needs[NeedType.NASHI]    = clamp(Pet.needs[NeedType.NASHI]    + 3);
+                Pet.needs[NeedType.CURIOSITY]= clamp(Pet.needs[NeedType.CURIOSITY]+ 3);
+            }
+            try { SoundEngine.playSuccess && SoundEngine.playSuccess(); } catch (_) {}
+            showToast('Hai preso una stella cadente. Il Lalìen vibra piano...');
         } else if (ev.kind === 'crystal') {
             // Each crystal rings with a pentatonic note derived from its hue
             if (Renderer) Renderer.sparkleAt(ev.x, ev.y, ev.hue || 180);

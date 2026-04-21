@@ -33,6 +33,11 @@ let _crystals = [];
 // Persistent fireflies — stateful so we can hit-test them against taps.
 // Positions are in FULL-res canvas coords (not the bg low-res).
 let _fireflies = [];
+// Echo-moths — a small flock that drifts across the daytime scene every few
+// minutes. Both the keeper and the pet can interact with them (keeper taps
+// scatter, pet passively notices and gains CURIOSITY). Positions in bg-res.
+let _moths = null;       // { flockX, flockY, vx, vy, members[], life, id }
+let _mothsNextAt = 0;
 let _fireflyNextRespawnAt = 0;
 // Tap sparkle overlays drawn on full-res canvas.
 let _envSparkles = [];
@@ -603,6 +608,72 @@ function drawBackground(ctx, w, h, tick, pet) {
     if (_fireflies.length > 0 && _fireflies.every(f => !f.alive)) {
         _fireflies = [];
         _fireflyNextRespawnAt = tick + 300 + Math.random() * 200;
+    }
+
+    // --- Echo-moths — alien flock that drifts across the daytime scene ---
+    // Spawn every ~3-7 min during daylight only. The flock has a centre that
+    // drifts diagonally, and each member orbits around it. Both keeper and
+    // pet can interact (keeper tap → scatter; pet notices → CURIOSITY bump).
+    if (!_moths && tick > _mothsNextAt && dayLight > 0.5) {
+        const fromLeft = Math.random() < 0.5;
+        _moths = {
+            id: 'moths-' + tick,
+            flockX: fromLeft ? -20 : w + 20,
+            flockY: h * (0.22 + Math.random() * 0.35),
+            vx: fromLeft ? 0.35 + Math.random() * 0.2 : -(0.35 + Math.random() * 0.2),
+            vy: (Math.random() - 0.5) * 0.15,
+            members: [],
+            life: 1,
+            scattered: 0,
+        };
+        const count = 4 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+            _moths.members.push({
+                ox: (Math.random() - 0.5) * 30,
+                oy: (Math.random() - 0.5) * 16,
+                phase: Math.random() * Math.PI * 2,
+                hue: 280 + Math.random() * 80,
+                flap: 0,
+            });
+        }
+        // Next spawn after 3-7 min
+        _mothsNextAt = tick + 3 * 60 * 60 + Math.floor(Math.random() * 4 * 60 * 60);
+    }
+    if (_moths) {
+        _moths.flockX += _moths.vx;
+        _moths.flockY += _moths.vy + Math.sin(tick * 0.01) * 0.08;
+        if (_moths.scattered > 0) _moths.scattered *= 0.96;
+        // Life ticks down; also die when off-screen
+        _moths.life -= 0.0015;
+        if (_moths.life <= 0 || _moths.flockX < -40 || _moths.flockX > w + 40) {
+            _moths = null;
+        } else {
+            ctx.save();
+            for (const m of _moths.members) {
+                m.phase += 0.08;
+                const flockScatter = _moths.scattered;
+                const mx = _moths.flockX + m.ox * (1 + flockScatter * 2) + Math.sin(m.phase) * 6;
+                const my = _moths.flockY + m.oy * (1 + flockScatter * 2) + Math.cos(m.phase * 1.1) * 4;
+                // Store resolved positions for hit-testing
+                m.x = mx; m.y = my;
+                // Pixel moth: 2 wings + 1-pixel body, flap every few frames
+                const flap = Math.floor(tick * 0.25 + m.phase * 10) % 2 === 0 ? 1 : 0;
+                ctx.globalAlpha = _moths.life;
+                ctx.fillStyle = `hsl(${m.hue}, 70%, 72%)`;
+                // Wings
+                if (flap) {
+                    ctx.fillRect(Math.round(mx) - 3, Math.round(my), 2, 1);
+                    ctx.fillRect(Math.round(mx) + 2, Math.round(my), 2, 1);
+                } else {
+                    ctx.fillRect(Math.round(mx) - 2, Math.round(my) - 1, 2, 2);
+                    ctx.fillRect(Math.round(mx) + 1, Math.round(my) - 1, 2, 2);
+                }
+                // Body
+                ctx.fillStyle = `hsl(${m.hue}, 85%, 85%)`;
+                ctx.fillRect(Math.round(mx), Math.round(my), 1, 1);
+            }
+            ctx.restore();
+        }
     }
 
     // Environmental grime when the pet has been dirty for a while —
@@ -1960,6 +2031,26 @@ export const Renderer = {
                 return { kind: 'crystal', id: c.id, hue: c.hue, x, y };
             }
         }
+        // Echo-moths — hit on any member of the flock scatters the whole flock
+        if (_moths) {
+            for (const m of _moths.members) {
+                if (m.x == null) continue;
+                const dx = bx - m.x, dy = by - m.y;
+                if (dx * dx + dy * dy <= 12 * 12) {
+                    return { kind: 'moth', id: _moths.id, x, y };
+                }
+            }
+        }
+        // Shooting stars — a touch on the trail grants a wish
+        for (const ss of _shootingStars) {
+            if (ss.life <= 0) continue;
+            // Trail passes through (ss.x, ss.y) back along (-len, -len*0.5).
+            // Hit-test against the head with a generous radius.
+            const dx = bx - ss.x, dy = by - ss.y;
+            if (dx * dx + dy * dy <= 18 * 18) {
+                return { kind: 'shooting-star', x, y };
+            }
+        }
         return null;
     },
 
@@ -1967,6 +2058,19 @@ export const Renderer = {
     catchFirefly(id) {
         const f = _fireflies.find(fl => fl.id === id);
         if (f) f.caught = 1;
+    },
+
+    /** Scatter the current moth flock — they burst outward then fade. */
+    scatterMoths() {
+        if (!_moths) return;
+        _moths.scattered = Math.max(_moths.scattered, 1);
+        _moths.life = Math.min(_moths.life, 0.5);   // die sooner after a scatter
+    },
+
+    /** Catch the head shooting star. Plays a burst and consumes the trail. */
+    catchShootingStar() {
+        const ss = _shootingStars.find(s => s.life > 0.3);
+        if (ss) ss.life = 0.1;
     },
 
     /** Register a sparkle overlay at (x, y) for tap feedback */
