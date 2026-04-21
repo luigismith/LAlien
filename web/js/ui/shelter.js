@@ -1,27 +1,25 @@
 /**
- * shelter.js -- Pixel-art cave on the right side of the canvas.
+ * shelter.js -- Pixel-art alien bio-pod on the right side of the canvas.
  *
- * The cave is a safe spot: when the pet is AFRAID, it's raining/snowing, or
+ * The pod is a safe spot: when the pet is AFRAID, it's raining/snowing, or
  * the pet wants to sleep, it autonomously walks toward the entrance. Inside,
  * SECURITY regenerates faster and rain/snow particles are blocked from
- * hitting the pet. The keeper can leave an item near the entrance to decorate
- * it (handled by the Items module drawing — we don't need extra code for that).
+ * hitting the pet. Tappable regions: entrance (door-equivalent), crown
+ * (window-equivalent), carapace (body).
  */
 import { NeedType } from '../pet/needs.js';
 
 let _stageW = 800, _stageH = 480;
 
 // Animation & interaction state
-let _tapFlash = null;             // { region, ticks } for pulse after tap
-let _doorKnockTicks = 0;          // door shakes when knocked
-let _windowTapTicks = 0;          // window flashes brighter when tapped
-let _bodySparkleTicks = 0;        // sparkle over the whole cottage
-// Ambient critters on/around the cottage
-let _bird = null;                 // { phase: 'arriving'|'perched'|'leaving', t, x, y }
-let _nextBirdAt = 900;            // first bird after ~15s
+let _tapFlash = null;
+let _doorKnockTicks = 0;
+let _windowTapTicks = 0;
+let _bodySparkleTicks = 0;
+let _nextMoteAt = 900;
+let _motes = [];
 
-// Shelter geometry (relative to canvas). Anchored near the right edge so the
-// pet can roam most of the ground and walk "in" by heading to the right.
+// Pod geometry (relative to canvas). Anchored near the right edge.
 function geom() {
     const w = _stageW, h = _stageH;
     const groundY = h * 0.82;
@@ -36,6 +34,32 @@ function geom() {
     };
 }
 
+// Big-pixel block of the pod. Keyed by (column, row) with 1 at the centre of
+// the silhouette. Row 0 is the BOTTOM (ground line). Rows grow upward.
+//
+// The pod is a 15 wide × 14 tall oval/egg silhouette, asymmetric at the top
+// (crest crown leans slightly forward), with a glowing portal near the
+// bottom-centre. Generated procedurally so it stays integer-aligned.
+function isInside(bx, by, bpW, bpH) {
+    // Relative to centre
+    const cx = (bpW - 1) / 2;
+    const cy = (bpH - 1) * 0.62;   // visual centre leans low for pod feel
+    const dx = (bx - cx) / (bpW * 0.48);
+    const dy = (by - cy) / (bpH * 0.62);
+    // Slight asymmetry: top-left gets a little "crown" bulge
+    const bulge = (bx < cx && by > bpH * 0.75) ? -0.06 : 0;
+    return (dx * dx + dy * dy) <= (1 + bulge);
+}
+
+function isCrown(bx, by, bpW, bpH) {
+    // Top third + narrower than the full width — the dome of the pod.
+    if (by < bpH * 0.62) return false;
+    const cx = (bpW - 1) / 2;
+    const dx = (bx - cx) / (bpW * 0.36);
+    const dy = (by - bpH * 0.9) / (bpH * 0.30);
+    return (dx * dx + dy * dy) <= 1;
+}
+
 export const Shelter = {
     setStage(w, h) { _stageW = w; _stageH = h; },
 
@@ -46,11 +70,9 @@ export const Shelter = {
 
     getInteriorPoint() {
         const g = geom();
-        // "Deep inside" position — pet centers here when tucked in
         return { x: g.entranceX + 6, y: g.entranceY - 6 };
     },
 
-    /** Is the pet world-position currently inside the shelter footprint? */
     contains(worldX, worldY) {
         const g = geom();
         return (worldX > g.leftX + 14
@@ -59,46 +81,53 @@ export const Shelter = {
              && worldY < g.groundY + 6);
     },
 
-    /** Returns true if pet's current world position is inside shelter */
     isPetInside(pet, petWorldX, petWorldY) {
         if (!pet || !pet.isAlive || !pet.isAlive() || pet.isEgg()) return false;
         return this.contains(petWorldX, petWorldY);
     },
 
-    /** Hit-test a point on the canvas against the cottage regions.
-     *  Returns 'door' | 'window' | 'body' | null.
-     */
+    tick(pet, petWorldX, petWorldY, timeMult = 1) {
+        if (!this.isPetInside(pet, petWorldX, petWorldY)) {
+            pet._inShelter = false;
+            return false;
+        }
+        pet._inShelter = true;
+        const s = pet.needs[NeedType.SECURITY];
+        if (s < 100) {
+            pet.needs[NeedType.SECURITY] = Math.min(100, s + 0.04 * timeMult);
+        }
+        return true;
+    },
+
     hitTest(x, y) {
         const g = geom();
-        // Bounding box of the walls (matches the render math).
-        const PX = 3;
-        const wallBp = 36, wallBpH = 22, roofBpH = 12;
-        const doorBpW = 9, doorBpH = 14;
-        const snap = (v) => Math.round(v / PX) * PX;
-        const baseX = snap(g.entranceX - (wallBp * PX) / 2);
-        const baseY = snap(g.groundY) - wallBpH * PX;
-        const wLeft = baseX, wTop = baseY - roofBpH * PX;
-        const wRight = baseX + wallBp * PX, wBot = baseY + wallBpH * PX;
-        if (x < wLeft - 12 || x > wRight + 12 || y < wTop - 6 || y > wBot + 4) return null;
-        // Door area
-        const doorBpX = Math.floor((wallBp - doorBpW) / 2) - 2;
-        const doorBpY = wallBpH - doorBpH;
-        const dX = baseX + doorBpX * PX;
-        const dY = baseY + doorBpY * PX;
-        const dW = doorBpW * PX;
-        const dH = doorBpH * PX;
-        if (x >= dX && x <= dX + dW && y >= dY && y <= dY + dH) return 'door';
-        // Window region
-        const winBpX = wallBp - 8;
-        const winBpY = 5;
-        const winBp = 5;
-        const wX = baseX + winBpX * PX, wY = baseY + winBpY * PX;
-        const wW = winBp * PX, wH = winBp * PX;
-        if (x >= wX && x <= wX + wW && y >= wY && y <= wY + wH) return 'window';
+        const PX = 9;
+        const bpW = 15, bpH = 14;
+        const baseX = Math.round((g.entranceX - (bpW * PX) / 2) / PX) * PX;
+        const baseY = Math.round(g.groundY / PX) * PX - bpH * PX;
+        // Rect spanning the whole pod
+        if (x < baseX - PX * 2 || x > baseX + (bpW + 2) * PX
+            || y < baseY - PX || y > baseY + bpH * PX + PX) return null;
+        // Work out which big-pixel we're on
+        const bx = Math.floor((x - baseX) / PX);
+        const by = Math.floor((bpH - 1) - (y - baseY) / PX);
+        if (bx < 0 || bx >= bpW || by < 0 || by >= bpH) return null;
+        if (!isInside(bx, by, bpW, bpH)) return null;
+        // Door = portal near bottom-centre
+        const doorCenterX = Math.floor(bpW / 2);
+        const doorTopRow = 4;
+        const doorBotRow = 0;
+        if (bx >= doorCenterX - 1 && bx <= doorCenterX + 1
+            && by >= doorBotRow && by <= doorTopRow) {
+            return 'door';
+        }
+        // Window = the rune at the crown centre
+        if (isCrown(bx, by, bpW, bpH) && Math.abs(bx - (bpW - 1) / 2) <= 1) {
+            return 'window';
+        }
         return 'body';
     },
 
-    /** Fire a tap interaction with a sparkle effect. Called by Interactions. */
     onTap(region) {
         _tapFlash = { region, ticks: 18 };
         if (region === 'door')   _doorKnockTicks = 25;
@@ -106,335 +135,240 @@ export const Shelter = {
         if (region === 'body')   _bodySparkleTicks = 30;
     },
 
-    /** Per-logic-tick: boost SECURITY while inside, return true if sheltered */
-    tick(pet, petWorldX, petWorldY, timeMult = 1) {
-        if (!this.isPetInside(pet, petWorldX, petWorldY)) {
-            pet._inShelter = false;
-            return false;
-        }
-        pet._inShelter = true;
-        // Extra SECURITY regen (on top of base recovery)
-        const s = pet.needs[NeedType.SECURITY];
-        if (s < 100) {
-            pet.needs[NeedType.SECURITY] = Math.min(100, s + 0.04 * timeMult);
-        }
-        // Miska doesn't decay in shelter (sheltered from the dust outside)
-        return true;
-    },
-
     /**
-     * Pixel-art cottage drawn with a single "big pixel" size matching the
-     * background's PIXEL_SCALE. Everything is integer-aligned rectangles —
-     * no curves, no gradients — so the shelter reads as the same chunky
-     * art as the sky, terrain, and pet sprite.
+     * Pixel-art alien bio-pod — a bioluminescent seed-dwelling that the
+     * syrma grew into for shelter. Stair-stepped oval silhouette in the
+     * same big-pixel grid as the background (PX = 9 screen pixels per
+     * big-pixel, matching the PIXEL_SCALE of the renderer's bg buffer).
      */
     draw(ctx, tick, pet) {
         const g = geom();
         const petHue = (pet && pet.dna) ? pet.dna.coreHue : 200;
 
-        // PX = one "big pixel" on screen. Matches PIXEL_SCALE used by the
-        // renderer's background buffer so cottage, terrain and sky all share
-        // the same pixel grid.
-        const PX = 3;
+        // PX = one big pixel. 9 matches the background's chunky resolution.
+        const PX = 9;
         const snap = (v) => Math.round(v / PX) * PX;
 
-        // Bioluminescent alien palette — rhymes with the pet sprite, the
-        // ground crystals and the cosmic sky. Cold teal-indigo body, warm
-        // golden accents (matching UI gold), crystalline dome shifting with
-        // the pet's own hue. No Tudor stone / red tile / brown wood.
+        // Bioluminescent palette — rhymes with cosmic sky, crystals and the
+        // pet's own hue. No wood, no brick. Carapace + dome + life-glow.
         const PAL = {
-            stone:       '#2B3C4E',                       // "carapace" base
-            stoneDark:   '#1A2833',                       // deep shadow
-            timber:      '#D4A534',                       // gold accents
-            timberHi:    '#FFE899',                       // bright gold
-            roof:        `hsl(${(petHue + 10) % 360}, 45%, 38%)`,  // crystal dome base
-            roofHi:      `hsl(${(petHue + 20) % 360}, 60%, 58%)`,  // crystal dome highlight
-            roofShadow:  `hsl(${(petHue + 10) % 360}, 50%, 22%)`,  // crystal dome shadow
-            glow:        `hsl(${(petHue + 40) % 360}, 80%, 72%)`,  // interior life-light
-            glowDim:     `hsl(${(petHue + 40) % 360}, 50%, 50%)`,
-            smoke:       '#B8C8E0',                       // cosmic mist
-            runeHue:     petHue,
+            shell:      '#2D3A48',                                      // carapace mid
+            shellDark:  '#1A2330',                                      // carapace deep
+            shellHi:    '#4A5E78',                                      // carapace highlight
+            crown:      `hsl(${(petHue + 15) % 360}, 42%, 32%)`,        // crystal dome base
+            crownHi:    `hsl(${(petHue + 30) % 360}, 60%, 62%)`,        // dome highlight
+            crownShad:  `hsl(${(petHue + 10) % 360}, 45%, 18%)`,        // dome shadow
+            vein:       `hsl(${(petHue + 40) % 360}, 70%, 55%)`,        // light veins
+            veinBright: `hsl(${(petHue + 40) % 360}, 85%, 75%)`,
+            portal:     `hsl(${(petHue + 50) % 360}, 85%, 70%)`,        // inside-glow
+            portalCore: '#FFFBE0',                                      // hottest point
+            rune:       `hsl(${petHue}, 90%, 75%)`,
+            mote:       '#B8C8E0',
         };
 
-        // Cottage measured in BIG-PIXELS (bp). 1 bp = PX screen pixels.
-        // Scaled up another ~40% on v3 so it reads as full architecture.
-        const wallBp  = 36;
-        const wallBpH = 22;
-        const roofBpH = 12;
-        const doorBpW = 9;
-        const doorBpH = 14;
-        const winBp   = 5;
+        // Pod dimensions in big pixels. 15×14 → 135×126 screen px, roughly
+        // pet-sized, matching the same chunky grain as crystals and sky.
+        const bpW = 15;
+        const bpH = 14;
+        const baseX = snap(g.entranceX - (bpW * PX) / 2);
+        const baseY = snap(g.groundY) - bpH * PX;
 
-        // Base coordinates (screen pixels), snapped to PX grid.
-        const baseX = snap(g.entranceX - (wallBp * PX) / 2);
-        const baseY = snap(g.groundY) - wallBpH * PX;   // top-left of walls
-
-        // Helper: paint a rectangle of NxM big pixels from (bx,by) big-coords
-        const bp = (bx, by, bw, bh, color) => {
+        // Helper — paint a big-pixel at column bx, row by (row 0 = ground).
+        const bp = (bx, byRow, w, h, color) => {
+            const x = baseX + bx * PX;
+            // Convert row-from-bottom (byRow) to row-from-top for drawing
+            const y = baseY + ((bpH - 1) - byRow) * PX;
             ctx.fillStyle = color;
-            ctx.fillRect(baseX + bx * PX, baseY + by * PX, bw * PX, bh * PX);
+            ctx.fillRect(x, y - (h - 1) * PX, w * PX, h * PX);
         };
-        const pxAt = (x, y, w, h, color) => {
+        const pxBlock = (bx, byRow, color) => {
+            const x = baseX + bx * PX;
+            const y = baseY + ((bpH - 1) - byRow) * PX;
             ctx.fillStyle = color;
-            ctx.fillRect(x, y, w, h);
+            ctx.fillRect(x, y, PX, PX);
         };
 
         ctx.save();
 
-        // ---- Walls: stone ashlar with horizontal timber beam at mid-height ----
-        for (let r = 0; r < wallBpH; r++) {
-            for (let c = 0; c < wallBp; c++) {
-                // Offset courses for a brick-like pattern.
-                const shift = (r % 2) ? 1 : 0;
-                const parity = ((c + shift) >> 0) & 1;
-                bp(c, r, 1, 1, parity ? PAL.stone : PAL.stoneDark);
+        // ---- Ground shadow under the pod (subtle, wider than pod) ----
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(baseX - PX, baseY + bpH * PX, (bpW + 2) * PX, Math.floor(PX * 0.6));
+        ctx.globalAlpha = 1;
+
+        // ---- Main silhouette: oval carapace ----
+        for (let by = 0; by < bpH; by++) {
+            for (let bx = 0; bx < bpW; bx++) {
+                if (!isInside(bx, by, bpW, bpH)) continue;
+                // Shading by column: left side lighter (incoming light),
+                // right side darker. Upper third is crown palette.
+                const inCrown = isCrown(bx, by, bpW, bpH);
+                const lightLean = (bx - bpW / 2) / (bpW / 2);   // -1..1
+                let color;
+                if (inCrown) {
+                    color = lightLean < -0.2 ? PAL.crownHi
+                          : lightLean >  0.4 ? PAL.crownShad
+                          : PAL.crown;
+                } else {
+                    color = lightLean < -0.3 ? PAL.shellHi
+                          : lightLean >  0.4 ? PAL.shellDark
+                          : PAL.shell;
+                }
+                pxBlock(bx, by, color);
             }
         }
-        // Horizontal timber at 40% height (binds composition horizontally)
-        const beamRow = Math.floor(wallBpH * 0.4);
-        bp(0, beamRow, wallBp, 1, PAL.timber);
-        pxAt(baseX, baseY + beamRow * PX, wallBp * PX, 1, PAL.timberHi);
-        // Vertical corner timbers (frame the walls)
-        bp(0,          0, 1, wallBpH, PAL.timber);
-        bp(wallBp - 1, 0, 1, wallBpH, PAL.timber);
-        // Single pixel highlight on the left corner timber
-        pxAt(baseX, baseY, 1, wallBpH * PX, PAL.timberHi);
 
-        // ---- Roof: symmetric stair-stepped pitched roof ----
-        // Each row narrower by 2bp. Eaves extend 1bp past the wall.
-        for (let r = 0; r < roofBpH; r++) {
-            const rowBpW = (wallBp + 2) - r * 2;
-            if (rowBpW <= 0) break;
-            const rowBpX = Math.floor((wallBp - rowBpW) / 2);
-            // Alternate rows for tile pattern within a single hue ramp
-            const color = (r === 0) ? PAL.roofShadow
-                         : (r === roofBpH - 1) ? PAL.roofHi
-                         : (r % 2 ? PAL.roof : PAL.roofHi);
-            bp(rowBpX, -(r + 1), rowBpW, 1, color);
-        }
-        // Under-eave shadow line (1 screen pixel, not a whole big-pixel row)
-        pxAt(baseX - PX, baseY - 1, (wallBp + 2) * PX, 1, PAL.roofShadow);
-
-        // ---- Chimney (2bp wide, single colour family) ----
-        const chimBpX = wallBp - 4;
-        const chimTop = -(roofBpH - 2);
-        const chimBpH = roofBpH - 1;
-        bp(chimBpX,     chimTop, 2, chimBpH,  PAL.roof);
-        bp(chimBpX,     chimTop, 2, 1,        PAL.roofShadow);
-        bp(chimBpX + 1, chimTop + 1, 1, 1,    PAL.roofHi);
-        // Smoke puffs (square big-pixels rising and fading)
-        for (let i = 0; i < 3; i++) {
-            const phase = (tick * 0.4 + i * 48) % 140;
-            const life = 1 - phase / 140;
-            if (life <= 0) continue;
-            const drift = Math.round(Math.sin(phase * 0.08) * PX);
-            const puffX = baseX + (chimBpX + 1) * PX - PX + drift;
-            const puffY = baseY + (chimTop - 1) * PX - phase * 0.5;
-            ctx.globalAlpha = life * 0.65;
-            const size = PX + Math.floor(phase / 55) * PX;
-            pxAt(Math.round(puffX), Math.round(puffY), size, PX, PAL.smoke);
+        // ---- Light veins — 3 vertical seams glowing with the pet's hue ----
+        const veinPulse = 0.55 + Math.sin(tick * 0.04) * 0.35;
+        const veinCols = [
+            Math.floor(bpW * 0.28),
+            Math.floor(bpW * 0.50),
+            Math.floor(bpW * 0.72),
+        ];
+        ctx.globalAlpha = veinPulse;
+        for (const vc of veinCols) {
+            for (let by = 2; by < bpH - 2; by++) {
+                if (!isInside(vc, by, bpW, bpH)) continue;
+                pxBlock(vc, by, PAL.vein);
+            }
+            // Brighter cap near the top of the vein
+            if (isInside(vc, bpH - 3, bpW, bpH)) pxBlock(vc, bpH - 3, PAL.veinBright);
         }
         ctx.globalAlpha = 1;
 
-        // ---- Window (3x3bp, warm glow, timber frame) ----
-        const glowPulse = 0.72 + Math.sin(tick * 0.05) * 0.15;
-        const winBpX = wallBp - 6;
-        const winBpY = Math.max(1, beamRow - winBp - 1);
-        // Frame
-        bp(winBpX - 1, winBpY - 1, winBp + 2, winBp + 2, PAL.timber);
-        // Glass
-        const glass = (glowPulse > 0.75) ? PAL.glow : PAL.glowDim;
-        bp(winBpX, winBpY, winBp, winBp, glass);
-        // Simple cross (1 big pixel wide bars — no subpixel trickery)
-        const cross = Math.floor(winBp / 2);
-        bp(winBpX + cross, winBpY, 1, winBp, PAL.timber);
-        bp(winBpX, winBpY + cross, winBp, 1, PAL.timber);
-        // Highlight (single big pixel) + shadow pane
-        bp(winBpX, winBpY, 1, 1, '#FFFBDC');
-        bp(winBpX + winBp - 1, winBpY + winBp - 1, 1, 1, PAL.glowDim);
-
-        // ---- Door (5x8bp), timber frame + stepped arch at the top ----
-        const doorBpX = Math.floor((wallBp - doorBpW) / 2) - 2;  // left of centre
-        const doorBpY = wallBpH - doorBpH;
-        // Timber frame (one big-pixel thick all around)
-        bp(doorBpX - 1, doorBpY - 1, doorBpW + 2, 1, PAL.timber);
-        bp(doorBpX - 1, doorBpY,     1, doorBpH,   PAL.timber);
-        bp(doorBpX + doorBpW, doorBpY, 1, doorBpH, PAL.timber);
-        // Stepped arch top (knock off the corners to suggest an arch)
-        bp(doorBpX,             doorBpY, 1, 1, PAL.timber);
-        bp(doorBpX + doorBpW - 1, doorBpY, 1, 1, PAL.timber);
-        // Door panel (solid wood tone + mid-shade for depth)
-        bp(doorBpX + 1, doorBpY + 1, doorBpW - 2, doorBpH - 1, PAL.timberHi);
-        bp(doorBpX,     doorBpY + 1, 1, doorBpH - 1, PAL.timber);
-        bp(doorBpX + doorBpW - 1, doorBpY + 1, 1, doorBpH - 1, PAL.timber);
-        // Plank seams (2 vertical lines through the door)
-        pxAt(baseX + (doorBpX + 2) * PX, baseY + (doorBpY + 1) * PX, 1, (doorBpH - 1) * PX, PAL.timber);
-        pxAt(baseX + (doorBpX + 3) * PX, baseY + (doorBpY + 1) * PX, 1, (doorBpH - 1) * PX, PAL.timber);
-        // Handle — 1bp, warm brass tone picked from the window glow family
-        bp(doorBpX + doorBpW - 2, doorBpY + Math.floor(doorBpH / 2) + 1, 1, 1, PAL.glow);
-        // Pet inside → a sliver of warm light from the door crack
-        if (pet && pet._inShelter) {
-            bp(doorBpX + 2, doorBpY + 2, 1, doorBpH - 3, PAL.glow);
+        // ---- Portal: arched doorway of light ----
+        const doorCX = Math.floor(bpW / 2);
+        const doorTopRow = 4;
+        // Portal arch: 3 wide at base narrowing to 1 at top
+        const arch = [
+            { dx: -1, h: 3 }, { dx: 0, h: 4 }, { dx: 1, h: 3 },
+        ];
+        // First paint the dark portal interior
+        for (const { dx, h } of arch) {
+            for (let i = 0; i < h; i++) {
+                pxBlock(doorCX + dx, i, PAL.shellDark);
+            }
         }
+        // Then the glowing portal halo (pulsing inner light)
+        const portalPulse = 0.7 + Math.sin(tick * 0.06) * 0.25;
+        ctx.globalAlpha = portalPulse;
+        for (const { dx, h } of arch) {
+            // Inner column: gradient dark→bright toward the centre
+            for (let i = 0; i < h - 1; i++) {
+                const intensity = 1 - Math.abs(dx) * 0.3 - i * 0.15;
+                if (intensity <= 0) continue;
+                ctx.fillStyle = intensity > 0.6 ? PAL.portal : PAL.vein;
+                ctx.globalAlpha = portalPulse * intensity;
+                const x = baseX + (doorCX + dx) * PX;
+                const y = baseY + ((bpH - 1) - i) * PX;
+                ctx.fillRect(x + PX * 0.25, y + PX * 0.15, PX * 0.5, PX * 0.7);
+            }
+        }
+        // Hottest point at the mouth centre
+        ctx.globalAlpha = portalPulse;
+        ctx.fillStyle = PAL.portalCore;
+        ctx.fillRect(baseX + doorCX * PX + PX * 0.35, baseY + (bpH - 2) * PX + PX * 0.3, PX * 0.3, PX * 0.3);
+        ctx.globalAlpha = 1;
 
-        // ---- Foundation: one row of darker stone matching the wall palette ----
-        bp(-1, wallBpH, wallBp + 2, 1, PAL.timber);
-
-        // ---- Rune above the door (ties the cottage to the pet) ----
-        const runePulse = 0.55 + Math.sin(tick * 0.06) * 0.35;
+        // ---- Crown rune at the top centre — the pet's hue, pulsing ----
+        const runePulse = 0.55 + Math.sin(tick * 0.05) * 0.4;
         ctx.globalAlpha = runePulse;
-        bp(doorBpX + Math.floor(doorBpW / 2), doorBpY - 2, 1, 1, `hsl(${PAL.runeHue},70%,70%)`);
-        ctx.globalAlpha = 1;
-
-        // ---- Ground shadow ----
-        ctx.globalAlpha = 0.4;
-        pxAt(baseX - PX, baseY + (wallBpH + 1) * PX, (wallBp + 2) * PX, PX, '#000000');
-        ctx.globalAlpha = 1;
-
-        // ---- Warm light spill onto the ground under the window ----
-        const spillX = baseX + (winBpX + cross) * PX;
-        for (let i = 0; i < 3; i++) {
-            ctx.globalAlpha = glowPulse * (0.2 - i * 0.05);
-            pxAt(spillX - (i + 2) * PX, baseY + (wallBpH + 2 + i) * PX, (i + 2) * 2 * PX, PX, PAL.glow);
+        const runeBx = Math.floor(bpW / 2);
+        const runeBy = bpH - 2;
+        pxBlock(runeBx, runeBy, PAL.rune);
+        // Four tiny arms around the rune
+        if (isInside(runeBx - 1, runeBy, bpW, bpH)) {
+            ctx.fillStyle = PAL.vein;
+            ctx.fillRect(baseX + (runeBx - 1) * PX + PX * 0.4, baseY + ((bpH - 1) - runeBy) * PX + PX * 0.4, PX * 0.3, PX * 0.2);
         }
         ctx.globalAlpha = 1;
 
-        // ===================================================================
-        // ANIMATED OVERLAYS (drawn on top of the static cottage)
-        // ===================================================================
-
-        // ---- Weathervane: a 4-arm silhouette on the roof ridge that spins
-        // with a slow natural rhythm (real wind would be nicer but noisy).
-        const vaneCx = baseX + Math.floor(wallBp * PX / 2);
-        const vaneCy = baseY - roofBpH * PX - 10;
-        const spinAngle = tick * 0.015;
-        // Post
-        pxAt(vaneCx - 1, vaneCy - 2, 2, 10, PAL.timber);
-        // Rotating pointer (drawn as 4 arms)
+        // ---- Small glowing "roots" on the ground around the base ----
         for (let i = 0; i < 4; i++) {
-            const a = spinAngle + (i * Math.PI / 2);
-            const len = (i % 2 === 0) ? 6 : 3;
-            const tx = Math.round(vaneCx + Math.cos(a) * len);
-            const ty = Math.round(vaneCy - 4 + Math.sin(a) * len * 0.6);
-            pxAt(tx, ty, 2, 2, i === 0 ? PAL.glow : PAL.roof);
+            const rootBx = 1 + i * 4;
+            if (rootBx >= bpW) break;
+            if (!isInside(rootBx, 0, bpW, bpH)) continue;
+            ctx.fillStyle = PAL.vein;
+            ctx.globalAlpha = 0.6;
+            ctx.fillRect(baseX + rootBx * PX, baseY + bpH * PX - 1, PX, 1);
         }
-        // Center dot
-        pxAt(vaneCx - 1, vaneCy - 5, 2, 2, PAL.timberHi);
+        ctx.globalAlpha = 1;
 
-        // ---- Door opens when the pet is inside (animated 3-frame crack)
-        if (pet && pet._inShelter) {
-            const openPx = 4 + Math.sin(tick * 0.03) * 1.5;
-            // Re-paint the right half of the door slightly opened — draw a warm
-            // glow strip beneath where the door opens inward.
-            const doorWpx = doorBpW * PX;
-            const doorHpx = doorBpH * PX;
-            const doorLeftX = baseX + doorBpX * PX;
-            const doorY = baseY + doorBpY * PX;
-            // Warm interior glow leaking out
-            ctx.save();
-            ctx.globalAlpha = 0.85;
-            const g = ctx.createLinearGradient(doorLeftX + doorWpx - openPx, 0, doorLeftX + doorWpx, 0);
-            g.addColorStop(0, 'rgba(255, 210, 120, 0.0)');
-            g.addColorStop(1, 'rgba(255, 230, 150, 0.9)');
-            ctx.fillStyle = g;
-            ctx.fillRect(doorLeftX + doorWpx - openPx - 2, doorY + 4, openPx + 2, doorHpx - 6);
-            ctx.restore();
+        // ---- Light spill on the ground in front of the portal ----
+        for (let i = 0; i < 4; i++) {
+            ctx.globalAlpha = portalPulse * (0.28 - i * 0.06);
+            ctx.fillStyle = PAL.portal;
+            const spillCenter = baseX + doorCX * PX + PX / 2;
+            const spillY = baseY + bpH * PX + i * PX;
+            const spillWidth = (i + 2) * 2 * PX;
+            ctx.fillRect(spillCenter - spillWidth / 2, spillY, spillWidth, PX);
         }
+        ctx.globalAlpha = 1;
 
-        // ---- Door knock: quick shake when the keeper tapped the door
+        // ---- Floating cosmic motes around the pod (ambient life) ----
+        if (tick > _nextMoteAt && _motes.length < 6) {
+            _motes.push({
+                x: baseX + (Math.random() * bpW + 0.5) * PX,
+                y: baseY + bpH * PX - PX,
+                vx: (Math.random() - 0.5) * 0.3,
+                vy: -0.4 - Math.random() * 0.4,
+                life: 1,
+                hue: (petHue + 40 + Math.random() * 40) % 360,
+            });
+            _nextMoteAt = tick + 40 + Math.random() * 80;
+        }
+        for (const m of _motes) {
+            m.x += m.vx; m.y += m.vy; m.life -= 0.008;
+        }
+        _motes = _motes.filter(m => m.life > 0);
+        for (const m of _motes) {
+            ctx.globalAlpha = m.life * 0.8;
+            ctx.fillStyle = `hsl(${m.hue}, 80%, 78%)`;
+            ctx.fillRect(Math.round(m.x), Math.round(m.y), 2, 2);
+        }
+        ctx.globalAlpha = 1;
+
+        // ---- Door/portal tap feedback ----
         if (_doorKnockTicks > 0) {
             const amp = _doorKnockTicks / 25;
-            const shake = Math.sin(_doorKnockTicks * 1.8) * amp * 2;
-            const doorLeftX = baseX + doorBpX * PX + shake;
-            const doorY = baseY + doorBpY * PX;
             ctx.save();
-            ctx.strokeStyle = `rgba(255,240,200,${amp * 0.8})`;
+            ctx.strokeStyle = `rgba(255, 240, 160, ${amp * 0.9})`;
             ctx.lineWidth = 2;
-            ctx.strokeRect(doorLeftX - 1, doorY - 1, doorBpW * PX + 2, doorBpH * PX + 2);
+            ctx.strokeRect(
+                baseX + (doorCX - 1) * PX - 2,
+                baseY + (bpH - doorTopRow - 1) * PX - 2,
+                3 * PX + 4,
+                doorTopRow * PX + 4
+            );
             ctx.restore();
             _doorKnockTicks--;
         }
-
-        // ---- Window tap: flash brighter
+        // Crown window-tap flash
         if (_windowTapTicks > 0) {
-            const winLeftX = baseX + winBpX * PX;
-            const winTopY  = baseY + winBpY * PX;
-            const wPx = winBp * PX, hPx = winBp * PX;
+            const k = _windowTapTicks / 40;
             ctx.save();
-            ctx.globalAlpha = (_windowTapTicks / 40) * 0.85;
-            ctx.fillStyle = '#FFF1C0';
-            ctx.fillRect(winLeftX, winTopY, wPx, hPx);
+            ctx.globalAlpha = k * 0.9;
+            ctx.fillStyle = '#FFFBE0';
+            const rx = baseX + Math.floor(bpW / 2) * PX - PX;
+            const ry = baseY;
+            ctx.fillRect(rx, ry, PX * 3, PX * 3);
             ctx.restore();
             _windowTapTicks--;
         }
-
-        // ---- Body sparkle: small sparks pop around the walls
+        // Body sparkle
         if (_bodySparkleTicks > 0) {
             ctx.save();
             for (let i = 0; i < 6; i++) {
                 const ph = (tick * 0.3 + i * 13) % 30;
                 const life = Math.max(0, 1 - ph / 30);
-                const sx = baseX + Math.floor(((i * 97) % (wallBp * PX)));
-                const sy = baseY + Math.floor(((i * 53) % (wallBpH * PX))) - 2;
+                const sx = baseX + (1 + ((i * 3) % (bpW - 2))) * PX;
+                const sy = baseY + (3 + (i % 8)) * PX;
                 ctx.globalAlpha = life * (_bodySparkleTicks / 30);
                 ctx.fillStyle = '#FFE899';
-                ctx.fillRect(sx, sy, 2, 2);
+                ctx.fillRect(sx, sy, 3, 3);
             }
             ctx.restore();
             _bodySparkleTicks--;
-        }
-
-        // ---- Bird: occasionally arrives, perches on the roof, flies off
-        if (!_bird && tick > _nextBirdAt) {
-            _bird = { phase: 'arriving', t: 0, x: baseX - 40, y: baseY - roofBpH * PX - 14, dir: 1 };
-            _nextBirdAt = tick + 1500 + Math.floor(Math.random() * 1800);
-        }
-        if (_bird) {
-            _bird.t++;
-            const perchX = baseX + Math.floor(wallBp * PX * 0.25);
-            const perchY = baseY - roofBpH * PX + 6;
-            if (_bird.phase === 'arriving') {
-                // Glide toward perch
-                _bird.x += (perchX - _bird.x) * 0.06;
-                _bird.y += (perchY - _bird.y) * 0.06;
-                if (Math.abs(_bird.x - perchX) < 1 && Math.abs(_bird.y - perchY) < 1) {
-                    _bird.phase = 'perched';
-                    _bird.t = 0;
-                }
-            } else if (_bird.phase === 'perched') {
-                if (_bird.t > 360) {   // 6 seconds perched
-                    _bird.phase = 'leaving';
-                    _bird.t = 0;
-                    _bird.dir = Math.random() > 0.5 ? 1 : -1;
-                }
-            } else {
-                // leaving
-                _bird.x += _bird.dir * 2;
-                _bird.y -= 1.2;
-                if (_bird.y < 0 || _bird.x < -20 || _bird.x > _stageW + 20) _bird = null;
-            }
-            if (_bird) {
-                const bx = Math.round(_bird.x), by = Math.round(_bird.y);
-                ctx.save();
-                // Body
-                ctx.fillStyle = '#2A2030';
-                ctx.fillRect(bx, by, 5, 3);
-                // Head
-                ctx.fillRect(bx + 4, by - 1, 2, 2);
-                // Beak
-                ctx.fillStyle = '#F5A642';
-                ctx.fillRect(bx + 6, by, 1, 1);
-                // Wings flap when flying
-                if (_bird.phase !== 'perched') {
-                    const flap = Math.sin(_bird.t * 0.4) > 0 ? -1 : 1;
-                    ctx.fillStyle = '#1A1020';
-                    ctx.fillRect(bx + 1, by + flap, 3, 1);
-                }
-                // Eye sparkle
-                ctx.fillStyle = '#FFE899';
-                ctx.fillRect(bx + 5, by - 1, 1, 1);
-                ctx.restore();
-            }
         }
 
         ctx.restore();
