@@ -322,13 +322,31 @@ export const Commands = {
             return { handled: true, executed: false, id: match.id, reply: '…mmm… thi?', needLlm: false };
         }
 
+        // B1: A hungry pet cannot refuse food. Bypass the compliance roll
+        // and force acceptance when KORA is low — otherwise the refuse bank
+        // will shout "sazio!" at a starving Lalìen.
         const prob = complianceProb(match);
-        const willDo = Math.random() < prob;
+        let willDo = Math.random() < prob;
+        if (match.id === 'eat' && Pet.needs[NeedType.KORA] < 45) willDo = true;
 
         if (!willDo) {
-            const refuseBank = REPLIES.refuse[match.id] || REPLIES.refuse.default;
+            // Contextual refuse: pick a reason that matches the pet's
+            // actual state instead of the generic hardcoded bank.
+            let refuseBank = REPLIES.refuse[match.id] || REPLIES.refuse.default;
+            if (match.id === 'eat') {
+                if (Pet.needs[NeedType.KORA] > 80) {
+                    refuseBank = ['sha… sazio.', 'mmh… sha, kora ko già.', 'shai… stomaco pieno.'];
+                } else if (Pet.needs[NeedType.MOKO] < 25) {
+                    refuseBank = ['sha… troppo moko.', 'mmh… dopo, ora dormo.'];
+                } else {
+                    refuseBank = ['sha… più tardi.', 'mmh… non adesso.', 'sha-sha, dopo.'];
+                }
+            } else if (match.id === 'sleep' && Pet.needs[NeedType.MOKO] > 75) {
+                refuseBank = ['sha… non stanco.', 'mmh… moko ko, ven-gioco.'];
+            } else if (match.id === 'play' && Pet.needs[NeedType.MOKO] < 20) {
+                refuseBank = ['sha-sha… troppo moko.', 'sha, ven-riposo.'];
+            }
             const reply = pick(refuseBank);
-            // Tiny NASHI hit when refusing — not punitive
             Pet.needs[NeedType.NASHI] = clamp(Pet.needs[NeedType.NASHI] - 1);
             return { handled: true, executed: false, id: match.id, reply, needLlm: false };
         }

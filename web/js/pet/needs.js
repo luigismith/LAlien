@@ -176,9 +176,17 @@ export const Needs = {
             state[NeedType.COSMIC] = 100;
         }
 
-        // Security (recovers even when offline — a calm world heals)
-        if (state[NeedType.SECURITY] < 100) {
-            addNeed(state, NeedType.SECURITY, RECOVERY_SECURITY * timeMult);
+        // Security — a calm world heals, but NOT while the pet is actively
+        // dying. If HEALTH is crashed or the other needs are in disaster,
+        // the pet cannot feel safer; SECURITY drifts with the crisis instead.
+        const othersAvgForSec = needsAvgExcludingHealth(state);
+        if (state[NeedType.HEALTH] > 35 && othersAvgForSec > 25) {
+            if (state[NeedType.SECURITY] < 100) {
+                addNeed(state, NeedType.SECURITY, RECOVERY_SECURITY * timeMult);
+            }
+        } else if (state[NeedType.SECURITY] > 0) {
+            // Tangible crisis → SECURITY erodes at half the recovery rate
+            addNeed(state, NeedType.SECURITY, -RECOVERY_SECURITY * 0.5 * timeMult);
         }
 
         // ---- Emotional coupling ----
