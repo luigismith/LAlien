@@ -146,9 +146,7 @@ export const SpriteLoader = {
         // Default meta fallback if JSON hasn't loaded yet (race condition on first frames)
         const meta = active.meta || { frames: 4, fps: 4, frame_width: 64, frame_height: 64 };
         const frames = meta.frames || 1;
-        // Play a bit faster than the metadata to hide the choppiness of 4-frame
-        // loops — combined with the cross-fade below it reads much smoother.
-        const fps = (meta.fps || 4) * 1.35;
+        const fps = meta.fps || 4;
         const fw = meta.frame_width || 64;
         const fh = meta.frame_height || 64;
         const elapsed = (performance.now() / 1000) * fps;
@@ -291,20 +289,17 @@ export const SpriteLoader = {
         ctx.rotate(rotation);
         ctx.scale(scaleX, scaleY);
 
-        // Draw the current frame at full alpha, then the next frame overlaid
-        // at `frameBlend` alpha. This cross-fades between the 4 keyframes so
-        // the eye sees continuous motion instead of a 4fps strobing loop.
-        // Stage-7 translucency rides on top via globalAlpha.
+        // Draw the current keyframe only. A cross-fade with the next frame
+        // was tried but pixel-art silhouettes don't blend cleanly (eyes /
+        // limbs in slightly different positions produce a "ghost twin"
+        // effect). Smoothness now comes from the runtime stage-specific
+        // idle sway above, not from inter-frame blending.
         const drawX = Math.round(-targetW / 2);
         const drawY = Math.round(-targetH / 2);
         const drawW = Math.round(targetW);
         const drawH = Math.round(targetH);
         ctx.globalAlpha = idleAlpha;
         ctx.drawImage(active.img, frameIdx * fw, 0, fw, fh, drawX, drawY, drawW, drawH);
-        if (frameBlend > 0.02 && frames > 1) {
-            ctx.globalAlpha = idleAlpha * frameBlend;
-            ctx.drawImage(active.img, nextFrameIdx * fw, 0, fw, fh, drawX, drawY, drawW, drawH);
-        }
 
         // Stage-7 transcendent: emit a few sparkle particles around the silhouette.
         if (stage === 7 && (activity === 'IDLE' || !activity || activity === 'MEDITATING')) {
