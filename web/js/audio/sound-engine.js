@@ -157,10 +157,14 @@ function buildGraph() {
     revBus = ctx.createGain();
     revBus.gain.value = 1.0;
     revOut = ctx.createGain();
-    revOut.gain.value = 0.42;
+    revOut.gain.value = 0.38;
     revBus.connect(reverb);
     reverb.connect(revOut);
-    revOut.connect(limiter);
+    // IMPORTANT: the reverb WET must go through `master` so the user's
+    // volume slider controls it. Previously `revOut.connect(limiter)`
+    // bypassed the slider — anything with a reverb send (especially the
+    // ambient bed at wet=0.85) stayed loud when the user lowered volume.
+    revOut.connect(master);
 
     master.connect(limiter);
     limiter.connect(ctx.destination);
@@ -2070,7 +2074,9 @@ function startAmbient(stage = 0) {
     // Soft target — the ambient bed should sit quietly under everything.
     // 0.55 leaves headroom for pet chirps, TTS and minigame synths without
     // becoming an invasive carpet. Duck is applied separately to this value.
-    out.gain.exponentialRampToValueAtTime(0.55, t0 + 3.5);
+    // Lowered from 0.55 → 0.32 per user feedback: ambient bed was too loud
+    // in the mix. Now sits well under SFX / TTS / synth voices.
+    out.gain.exponentialRampToValueAtTime(0.32, t0 + 3.5);
 
     ambient = { nodes, out, stage, timers };
 }
@@ -2155,7 +2161,7 @@ export const SoundEngine = {
         ambient.out.gain.cancelScheduledValues(t);
         ambient.out.gain.setValueAtTime(ambient.out.gain.value, t);
         // Restore to the soft baseline — see startAmbient's fade-in target.
-        ambient.out.gain.linearRampToValueAtTime(0.55, t + fadeMs / 1000);
+        ambient.out.gain.linearRampToValueAtTime(0.32, t + fadeMs / 1000);
     },
     setEnabled(v) {
         _enabled = !!v;

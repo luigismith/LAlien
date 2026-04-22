@@ -227,7 +227,7 @@ export const SpriteLoader = {
         //   5 adult:    slow measured sway
         //   6 elder:    very slow drift, breath longer
         //   7 transcen: gentle rotation + alpha shimmer + dilation breath
-        const stage = pet.stage;
+        // (stage already declared above for targetH)
         let idleRotBias = 0;
         let idleTx = 0, idleTy = 0;
         let idleAlpha = 1;
