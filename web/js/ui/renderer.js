@@ -971,114 +971,164 @@ function getSecurityShake(needs, tick) {
 // Egg
 // ---------------------------------------------------------------------------
 function drawEgg(ctx, cx, cy, tick, pet) {
-    // Pre-hatch excitement: if close to hatching, shake increases
+    // Pre-hatch excitement
     let closeToHatch = 0;
     if (pet) {
         const pctAge   = Math.min(1, (pet.ageSeconds / 60) / 10);
         const pctTouch = Math.min(1, (pet.touchInteractions || 0) / 3);
         closeToHatch = Math.min(pctAge, pctTouch);
     }
-    const shakeAmp = closeToHatch > 0.7 ? (closeToHatch - 0.7) * 18 : 0;
-    const shakeX = Math.sin(tick * 0.5) * shakeAmp;
-    const shakeY = Math.cos(tick * 0.7) * shakeAmp * 0.6;
-    cx += shakeX; cy += shakeY;
+    const shakeAmp = closeToHatch > 0.7 ? (closeToHatch - 0.7) * 14 : 0;
+    const shakeX = Math.round(Math.sin(tick * 0.5) * shakeAmp);
+    const shakeY = Math.round(Math.cos(tick * 0.7) * shakeAmp * 0.6);
+    cx = Math.round(cx) + shakeX;
+    cy = Math.round(cy) + shakeY;
 
-    const pulse = Math.sin(tick * 0.03) * 3;
-    const glowAlpha = 0.3 + Math.sin(tick * 0.05) * 0.15;
+    // Pure pixel-art: one big-pixel = PX screen pixels, no curves/gradients.
+    // 7 columns × 9 rows egg silhouette, stair-stepped like a real pixel egg.
+    const PX = 6;
+    const bpW = 7, bpH = 9;
+    // Silhouette mask — 1 = filled, 0 = transparent
+    //  row 0 (top) is narrowest, row 8 (bottom) slightly wider
+    const MASK = [
+        // col 0 1 2 3 4 5 6
+        [ 0, 0, 1, 1, 1, 0, 0 ], // row 0
+        [ 0, 1, 1, 1, 1, 1, 0 ], // row 1
+        [ 1, 1, 1, 1, 1, 1, 1 ], // row 2
+        [ 1, 1, 1, 1, 1, 1, 1 ], // row 3
+        [ 1, 1, 1, 1, 1, 1, 1 ], // row 4 — widest body
+        [ 1, 1, 1, 1, 1, 1, 1 ], // row 5
+        [ 1, 1, 1, 1, 1, 1, 1 ], // row 6
+        [ 0, 1, 1, 1, 1, 1, 0 ], // row 7
+        [ 0, 0, 1, 1, 1, 0, 0 ], // row 8 (bottom, symmetric to top)
+    ];
+    // Light-lean shading: col 1-2 brighter (rim), col 4-5 mid, col 6 darker
+    const PAL = {
+        hi:    '#6EBFD0',     // rim highlight (top-left light)
+        mid:   '#3C5F75',     // body
+        low:   '#1A3A4A',     // shadow side
+        dark:  '#0D2230',     // deepest
+        glow:  '#3ECFCF',     // inner teal life
+        glowH: '#6FE8E8',     // brighter pulse
+        gold:  '#D4A534',     // close-to-hatch accent
+        goldH: '#FFE899',     // hatching glow
+        white: '#EFF8FF',     // specular
+    };
 
-    // Ground shadow
-    ctx.fillStyle = `rgba(0,0,0,${0.18 + closeToHatch * 0.1})`;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + 50, 34 - shakeAmp * 0.4, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const baseX = cx - Math.floor(bpW / 2) * PX;
+    const baseY = cy - Math.floor(bpH / 2) * PX;
 
-    // Outer glow — brightens as hatching nears
-    const glowSize = 55 + pulse + closeToHatch * 18;
-    const grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, glowSize);
-    grad.addColorStop(0, `rgba(62, 207, 207, ${glowAlpha + closeToHatch * 0.3})`);
-    grad.addColorStop(0.5, `rgba(212, 165, 52, ${closeToHatch * 0.25})`);
-    grad.addColorStop(1, 'rgba(62, 207, 207, 0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, glowSize, glowSize, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Ground shadow — wider than egg, thin
+    ctx.fillStyle = `rgba(0,0,0,${0.25 + closeToHatch * 0.1})`;
+    const shadowW = (bpW + 2) * PX - Math.abs(shakeX) * 2;
+    ctx.fillRect(cx - shadowW / 2, cy + Math.floor(bpH / 2) * PX + PX, shadowW, 2);
 
-    // Egg body with gradient (top-lit)
-    const eggGrad = ctx.createRadialGradient(cx - 10, cy - 12, 4, cx, cy, 38);
-    eggGrad.addColorStop(0, '#3C5F75');
-    eggGrad.addColorStop(0.7, '#1A3A4A');
-    eggGrad.addColorStop(1, '#0D2230');
-    ctx.fillStyle = eggGrad;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 30, 38 + pulse * 0.3, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Outer glow halo — concentric pixel rings, no gradient
+    const glowPulse = Math.sin(tick * 0.05);
+    for (let ring = 0; ring < 3; ring++) {
+        ctx.globalAlpha = (0.14 - ring * 0.04) * (0.8 + glowPulse * 0.4)
+                         + closeToHatch * 0.1;
+        ctx.fillStyle = closeToHatch > 0.7 ? PAL.gold : PAL.glow;
+        for (let r = 0; r < bpH; r++) {
+            for (let c = 0; c < bpW; c++) {
+                if (!MASK[r][c]) continue;
+                // Edge detection: paint a "ring" around the silhouette
+                const isEdge = (r === 0 || r === bpH - 1 || c === 0 || c === bpW - 1)
+                    || !MASK[r - 1]?.[c] || !MASK[r + 1]?.[c]
+                    || !MASK[r][c - 1] || !MASK[r][c + 1];
+                if (!isEdge) continue;
+                const px = baseX + c * PX;
+                const py = baseY + r * PX;
+                const pad = (ring + 1) * 2;
+                ctx.fillRect(px - pad, py - pad, PX + pad * 2, 2);
+                ctx.fillRect(px - pad, py + PX + pad - 2, PX + pad * 2, 2);
+                ctx.fillRect(px - pad, py - pad, 2, PX + pad * 2);
+                ctx.fillRect(px + PX + pad - 2, py - pad, 2, PX + pad * 2);
+            }
+        }
+    }
+    ctx.globalAlpha = 1;
 
-    // Rim highlight
-    ctx.save();
-    ctx.globalAlpha = 0.4;
-    ctx.strokeStyle = '#6EBFD0';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy - 2, 28, 36, 0, Math.PI * 1.15, Math.PI * 1.85);
-    ctx.stroke();
-    ctx.restore();
-
-    // Specular highlight (top-left)
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    const hl = ctx.createRadialGradient(cx - 10, cy - 14, 0, cx - 10, cy - 14, 12);
-    hl.addColorStop(0, 'rgba(255,255,255,0.9)');
-    hl.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = hl;
-    ctx.beginPath();
-    ctx.ellipse(cx - 8, cy - 14, 9, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // Inner veins
-    ctx.strokeStyle = `rgba(62, 207, 207, ${0.3 + glowAlpha * 0.3})`;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 5; i++) {
-        const angle = (tick * 0.01 + i * 1.256);
-        const r = 15 + Math.sin(tick * 0.04 + i) * 5;
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(angle) * r * 0.3, cy + Math.sin(angle) * r * 0.3, r, angle, angle + 1);
-        ctx.stroke();
+    // Main body — pixel by pixel with light lean
+    for (let r = 0; r < bpH; r++) {
+        for (let c = 0; c < bpW; c++) {
+            if (!MASK[r][c]) continue;
+            const px = baseX + c * PX;
+            const py = baseY + r * PX;
+            // Shade by (col, row): top-left lit, bottom-right dark
+            let color;
+            const topEdge = r === 0 || (r === 1 && (c === 1 || c === 5));
+            const leftRim = c <= 1 && r >= 2 && r <= 6;
+            const rightShadow = c >= 5 && r >= 3;
+            const bottomShadow = r >= 7;
+            if (topEdge) color = PAL.hi;
+            else if (leftRim && r < 5) color = PAL.hi;
+            else if (rightShadow) color = PAL.low;
+            else if (bottomShadow) color = PAL.low;
+            else if (c === 6) color = PAL.low;
+            else color = PAL.mid;
+            ctx.fillStyle = color;
+            ctx.fillRect(px, py, PX, PX);
+        }
     }
 
-    // Core pulse — gold & bigger near hatching
-    const corePulse = 8 + pulse * 0.5 + closeToHatch * 4;
-    const coreCol = closeToHatch > 0.8 ? `rgba(212, 165, 52, ${glowAlpha + 0.2})` : `rgba(62, 207, 207, ${glowAlpha + 0.1})`;
-    ctx.fillStyle = coreCol;
-    ctx.beginPath();
-    ctx.arc(cx, cy - 2, corePulse, 0, Math.PI * 2);
-    ctx.fill();
+    // Pixel specular highlight — 3-4 bright pixels top-left
+    ctx.fillStyle = PAL.white;
+    ctx.fillRect(baseX + 2 * PX, baseY + 1 * PX, PX, 1);
+    ctx.fillRect(baseX + 1 * PX + 3, baseY + 2 * PX + 1, PX - 2, 1);
 
-    // Emerging cracks when very close to hatch
+    // Inner life-core — pulsing 3×3 big-pixel shape in the centre
+    const corePulse = Math.floor(Math.sin(tick * 0.04) * 2);
+    const coreX = baseX + 3 * PX;
+    const coreY = baseY + 4 * PX;
+    const coreColor = closeToHatch > 0.8 ? PAL.goldH : PAL.glowH;
+    // 3×3 diamond
+    ctx.fillStyle = coreColor;
+    ctx.globalAlpha = 0.7 + glowPulse * 0.3;
+    ctx.fillRect(coreX, coreY - PX + corePulse, PX, PX);         // top
+    ctx.fillRect(coreX - PX, coreY, PX * 3, PX);                  // middle row
+    ctx.fillRect(coreX, coreY + PX - corePulse, PX, PX);         // bottom
+    // Inner bright pixel
+    ctx.fillStyle = closeToHatch > 0.8 ? '#FFFBE0' : '#EAFBFB';
+    ctx.fillRect(coreX + PX / 2 - 1, coreY + PX / 2 - 1, 2, 2);
+    ctx.globalAlpha = 1;
+
+    // Pixel veins — four 2-pixel lines fanning out from the core
+    const veinAlpha = 0.25 + glowPulse * 0.2;
+    ctx.globalAlpha = veinAlpha;
+    ctx.fillStyle = PAL.glow;
+    const veins = [
+        [coreX - PX * 2, coreY - PX], [coreX - PX * 2, coreY - PX + 2],
+        [coreX + PX * 2, coreY - PX], [coreX + PX * 2, coreY - PX + 2],
+        [coreX - PX * 2, coreY + PX], [coreX + PX * 2, coreY + PX],
+    ];
+    for (const [vx, vy] of veins) ctx.fillRect(vx, vy, PX, 2);
+    ctx.globalAlpha = 1;
+
+    // Pixel cracks when close to hatch
     if (closeToHatch > 0.85) {
         const crackAlpha = (closeToHatch - 0.85) / 0.15;
-        ctx.save();
-        ctx.strokeStyle = `rgba(255, 230, 120, ${crackAlpha})`;
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#FFE699';
-        ctx.shadowBlur = 8;
-        for (let i = 0; i < 3; i++) {
-            const a = i * Math.PI * 2 / 3 + tick * 0.003;
-            const x0 = cx + Math.cos(a) * 8;
-            const y0 = cy + Math.sin(a) * 8;
-            const x1 = cx + Math.cos(a) * 28;
-            const y1 = cy + Math.sin(a) * 32;
-            ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.lineTo((x0 + x1) / 2 + (Math.random() - 0.5) * 3, (y0 + y1) / 2 + (Math.random() - 0.5) * 3);
-            ctx.lineTo(x1, y1);
-            ctx.stroke();
-        }
-        ctx.restore();
+        ctx.globalAlpha = crackAlpha;
+        ctx.fillStyle = PAL.goldH;
+        const tickPhase = Math.floor(tick * 0.1) % 3;
+        // 3 short jagged cracks at fixed positions
+        const cracks = [
+            [baseX + 2 * PX, baseY + 3 * PX, [[0,0],[1,1],[2,0],[3,2]]],
+            [baseX + 4 * PX, baseY + 2 * PX, [[0,0],[1,-1],[2,0],[3,-1]]],
+            [baseX + 3 * PX, baseY + 6 * PX, [[0,0],[0,1],[1,2],[2,2]]],
+        ];
+        cracks.forEach((crack, i) => {
+            if ((tickPhase + i) % 3 === 0) return;   // blink
+            const [ox, oy, pts] = crack;
+            for (const [dx, dy] of pts) {
+                ctx.fillRect(ox + dx * 2, oy + dy * 2, 2, 2);
+            }
+        });
+        ctx.globalAlpha = 1;
     }
 
     // Interaction area for egg
-    Interactions.setPetPosition(cx, cy, 38);
+    Interactions.setPetPosition(cx, cy, Math.max(bpW, bpH) * PX / 2);
 
     // Hatching progress (shown below egg) — 10 minutes + 3 tocchi
     if (pet) {

@@ -101,27 +101,22 @@ export const Shelter = {
 
     hitTest(x, y) {
         const g = geom();
-        const PX = 9;
-        const bpW = 15, bpH = 14;
+        const PX = 6;
+        const bpW = 22, bpH = 22;
         const baseX = Math.round((g.entranceX - (bpW * PX) / 2) / PX) * PX;
         const baseY = Math.round(g.groundY / PX) * PX - bpH * PX;
-        // Rect spanning the whole pod
         if (x < baseX - PX * 2 || x > baseX + (bpW + 2) * PX
             || y < baseY - PX || y > baseY + bpH * PX + PX) return null;
-        // Work out which big-pixel we're on
         const bx = Math.floor((x - baseX) / PX);
         const by = Math.floor((bpH - 1) - (y - baseY) / PX);
         if (bx < 0 || bx >= bpW || by < 0 || by >= bpH) return null;
         if (!isInside(bx, by, bpW, bpH)) return null;
-        // Door = portal near bottom-centre
+        // Larger portal — 5bp wide, 8bp tall — at bottom centre
         const doorCenterX = Math.floor(bpW / 2);
-        const doorTopRow = 4;
-        const doorBotRow = 0;
-        if (bx >= doorCenterX - 1 && bx <= doorCenterX + 1
-            && by >= doorBotRow && by <= doorTopRow) {
+        const doorTopRow = 7;
+        if (bx >= doorCenterX - 2 && bx <= doorCenterX + 2 && by <= doorTopRow) {
             return 'door';
         }
-        // Window = the rune at the crown centre
         if (isCrown(bx, by, bpW, bpH) && Math.abs(bx - (bpW - 1) / 2) <= 1) {
             return 'window';
         }
@@ -145,8 +140,10 @@ export const Shelter = {
         const g = geom();
         const petHue = (pet && pet.dna) ? pet.dna.coreHue : 200;
 
-        // PX = one big pixel. 9 matches the background's chunky resolution.
-        const PX = 9;
+        // PX = one big pixel. 6 is a middle grain — finer than the background
+        // bg-buffer upscale (which is ~9 screen px) but still clearly pixel-
+        // art. Gives room for a larger portal and more organic curvature.
+        const PX = 6;
         const snap = (v) => Math.round(v / PX) * PX;
 
         // Bioluminescent palette — rhymes with cosmic sky, crystals and the
@@ -166,10 +163,11 @@ export const Shelter = {
             mote:       '#B8C8E0',
         };
 
-        // Pod dimensions in big pixels. 15×14 → 135×126 screen px, roughly
-        // pet-sized, matching the same chunky grain as crystals and sky.
-        const bpW = 15;
-        const bpH = 14;
+        // Pod dimensions in big pixels. 22×22 at PX=6 → 132×132 screen px,
+        // roughly pet-sized. More cells means a smoother oval silhouette
+        // and enough room for a portal that a Lalìen can actually enter.
+        const bpW = 22;
+        const bpH = 22;
         const baseX = snap(g.entranceX - (bpW * PX) / 2);
         const baseY = snap(g.groundY) - bpH * PX;
 
@@ -236,12 +234,13 @@ export const Shelter = {
         }
         ctx.globalAlpha = 1;
 
-        // ---- Portal: arched doorway of light ----
+        // ---- Portal: larger arched doorway of light (5bp wide × 8bp tall) ----
         const doorCX = Math.floor(bpW / 2);
-        const doorTopRow = 4;
-        // Portal arch: 3 wide at base narrowing to 1 at top
+        const doorTopRow = 7;
+        // Portal arch: 5 wide at base, narrows toward the top
         const arch = [
-            { dx: -1, h: 3 }, { dx: 0, h: 4 }, { dx: 1, h: 3 },
+            { dx: -2, h: 5 }, { dx: -1, h: 7 }, { dx: 0, h: 8 },
+            { dx: 1, h: 7 },  { dx: 2, h: 5 },
         ];
         // First paint the dark portal interior
         for (const { dx, h } of arch) {
