@@ -126,24 +126,24 @@ Nessun bundler, nessun npm. JS vanilla con moduli ES6 nativi.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/03-day-home.png" alt="Day scene with cottage" width="260"></td>
-<td><img src="docs/screenshots/05-teen-day.png" alt="Teenage pet daytime" width="260"></td>
-<td><img src="docs/screenshots/04-meditation-night.png" alt="Meditation at night" width="260"></td>
+<td><img src="docs/screenshots/01-lali-na-dawn.png" alt="Lali-na at dawn" width="240"></td>
+<td><img src="docs/screenshots/02-lali-ko-sunny-chat.png" alt="Lali-ko chatting on a sunny noon" width="240"></td>
+<td><img src="docs/screenshots/03-lali-ren-sunset.png" alt="Lali-ren at sunset under broken clouds" width="240"></td>
 </tr>
 <tr>
-<td align="center"><sub>Pet bambino, casetta, sole pomeridiano</sub></td>
-<td align="center"><sub>Lali-ren di giorno con cristalli e lucciole</sub></td>
-<td align="center"><sub>Meditazione notturna con luna e stelle</sub></td>
+<td align="center"><sub><b>Lali-na all'alba</b><br>le prime ore di vita</sub></td>
+<td align="center"><sub><b>Lali-ko parla al custode</b><br>mezzogiorno sereno</sub></td>
+<td align="center"><sub><b>Lali-ren al tramonto</b><br>nuvole spezzate, sole caldo</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/08-transcendent-night.png" alt="Transcendent stage at night" width="260"></td>
-<td><img src="docs/screenshots/06-shalim-synth.png" alt="Shalim-Koro chord synth" width="260"></td>
-<td><img src="docs/screenshots/07-vith-ondi.png" alt="Vith-Ondi breathing meditation" width="260"></td>
+<td><img src="docs/screenshots/04-lali-vox-rain.png" alt="Lali-vox in the rain" width="240"></td>
+<td><img src="docs/screenshots/05-lali-mere-night-moon.png" alt="Lali-mere at night under the moon" width="240"></td>
+<td><img src="docs/screenshots/06-lali-thishi-dream.png" alt="Lali-thishi dreaming, transcendent" width="240"></td>
 </tr>
 <tr>
-<td align="center"><sub>Stadio trascendente con aurora</sub></td>
-<td align="center"><sub>Shalim-Koro — chord synth Orchid-like</sub></td>
-<td align="center"><sub>Vith-Ondi — respiro guidato</sub></td>
+<td align="center"><sub><b>Lali-vox sotto la pioggia</b><br>il sole velato dietro le gocce</sub></td>
+<td align="center"><sub><b>Lali-mere di notte</b><br>luna reale, cielo stellato</sub></td>
+<td align="center"><sub><b>Lali-thishi che sogna</b><br>stadio trascendente, vicino all'addio</sub></td>
 </tr>
 </table>
 
