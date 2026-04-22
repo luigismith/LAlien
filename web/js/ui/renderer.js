@@ -187,7 +187,23 @@ function drawBackground(ctx, w, h, tick, pet) {
         // Sun position: true arc from horizon (sunrise) to zenith (noon) and
         // back down to horizon (sunset). Visible also at dawn/dusk so the
         // keeper sees it low on the horizon in late afternoon / early evening.
-        if (phase !== 'night' && wCond.condition !== 'thunder') {
+        //
+        // Celestial occlusion: during precipitation (rain/snow/thunder) or
+        // heavy overcast the solar disc is fully hidden — it would be
+        // incoherent to see "beautiful sun + rain pouring" in the same scene.
+        // Mist and moderate cloud cover dim the disc proportionally.
+        const noCelestial = (wCond.condition === 'rain' || wCond.condition === 'snow' ||
+                             wCond.condition === 'thunder' || (wCond.clouds || 0) >= 85);
+        const celestialDim = (() => {
+            if (noCelestial) return 0;
+            if (wCond.condition === 'mist') return 0.22;
+            if (wCond.condition === 'clouds') return Math.max(0.18, 1 - (wCond.clouds || 60) / 110);
+            // Light clouds over an otherwise clear sky
+            const c = wCond.clouds || 0;
+            if (c > 40) return Math.max(0.35, 1 - c / 140);
+            return 1;
+        })();
+        if (phase !== 'night' && !noCelestial) {
             const sun = Environment.getSunTimes(now);
             let arc = 0.5;
             if (sun.sunrise && sun.sunset) {
@@ -202,7 +218,7 @@ function drawBackground(ctx, w, h, tick, pet) {
             const sunX = Math.floor(arc * w);
             const sunY = Math.floor(horizonY - rise * (horizonY - apexY));
             ctx.save();
-            ctx.globalAlpha = Math.min(1, 1.1 * dayLight) * (wCond.condition === 'clouds' ? 0.55 : 1);
+            ctx.globalAlpha = Math.min(1, 1.1 * dayLight) * celestialDim;
             // Big pixel-art sun — crisp concentric rings, no gaussian glow.
             const r = Math.max(6, Math.round(h * 0.028));
             // Soft outer corona (one ring of dim pixels — not a gradient)
@@ -243,7 +259,9 @@ function drawBackground(ctx, w, h, tick, pet) {
         }
 
         // --- Moon at night (new) ---
-        if (phase === 'night' && wCond.condition !== 'thunder') {
+        // Same occlusion as the sun: rain/snow/thunder and heavy overcast hide
+        // the moon entirely; mist and moderate clouds dim it.
+        if (phase === 'night' && !noCelestial) {
             const nowMs = now.getTime();
             // Monthly phase (synodic month ≈ 29.53 days)
             const synodic = 29.53 * 86400 * 1000;
@@ -269,12 +287,14 @@ function drawBackground(ctx, w, h, tick, pet) {
             const moonY = Math.floor(horizonY - rise * (horizonY - apexY));
             const mr = Math.max(5, Math.round(h * 0.022));
             ctx.save();
+            // Cloud/mist dimming applies to every layer drawn inside this block.
+            const baseMoonAlpha = celestialDim;
             // Soft halo
-            ctx.globalAlpha = 0.35;
+            ctx.globalAlpha = 0.35 * baseMoonAlpha;
             ctx.fillStyle = 'rgba(220,230,255,0.5)';
             ctx.beginPath(); ctx.arc(moonX, moonY, mr + 3, 0, Math.PI * 2); ctx.fill();
             // Full moon base
-            ctx.globalAlpha = 1;
+            ctx.globalAlpha = baseMoonAlpha;
             ctx.fillStyle = '#E8ECF6';
             ctx.beginPath(); ctx.arc(moonX, moonY, mr, 0, Math.PI * 2); ctx.fill();
             // Phase shadow: subtract a circle offset based on mp
@@ -295,8 +315,12 @@ function drawBackground(ctx, w, h, tick, pet) {
         }
     }
 
-    // Dawn / dusk horizon blaze — vivid orange-pink strip where the sun is
-    if (phase === 'dawn' || phase === 'dusk') {
+    // Dawn / dusk horizon blaze — vivid orange-pink strip where the sun is.
+    // Hidden during heavy weather (the sun is behind clouds, no blaze shows).
+    const blazeWCond = (typeof Weather !== 'undefined') ? Weather.get() : { condition: 'clear', clouds: 0 };
+    const blazeHidden = (blazeWCond.condition === 'rain' || blazeWCond.condition === 'snow' ||
+                         blazeWCond.condition === 'thunder' || (blazeWCond.clouds || 0) >= 85);
+    if ((phase === 'dawn' || phase === 'dusk') && !blazeHidden) {
         ctx.save();
         const sunX = phase === 'dawn' ? w * 0.15 : w * 0.85;
         const blaze = ctx.createRadialGradient(sunX, h * 0.72, 8, sunX, h * 0.72, w * 0.55);
