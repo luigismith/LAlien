@@ -3,7 +3,7 @@
  * Cache-first strategy for static assets
  */
 
-const CACHE_NAME = 'lalien-companion-v56';
+const CACHE_NAME = 'lalien-companion-v57';
 const STATIC_ASSETS = [
     './',
     './index.html',

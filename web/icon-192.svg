@@ -1,170 +1,166 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192" shape-rendering="crispEdges">
+  <!-- Pure pixel-art app icon. 24x24 grid, 8px per cell. -->
   <defs>
-    <!-- Cosmic background gradient -->
-    <radialGradient id="bg" cx="50%" cy="42%" r="65%">
-      <stop offset="0%"  stop-color="#1A1040"/>
-      <stop offset="45%" stop-color="#0C0820"/>
-      <stop offset="100%" stop-color="#060410"/>
-    </radialGradient>
-    <!-- Body core glow -->
-    <radialGradient id="bodyGlow" cx="45%" cy="35%" r="55%">
-      <stop offset="0%"  stop-color="#F0D0F0"/>
-      <stop offset="35%" stop-color="#D8A0D8"/>
-      <stop offset="70%" stop-color="#C080C0"/>
-      <stop offset="100%" stop-color="#905090"/>
-    </radialGradient>
-    <!-- Specular highlight -->
-    <radialGradient id="spec" cx="35%" cy="25%" r="30%">
-      <stop offset="0%"  stop-color="#FFFFFF" stop-opacity="0.7"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
-    </radialGradient>
-    <!-- Cosmic aura -->
-    <radialGradient id="aura" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"  stop-color="#3ECFCF" stop-opacity="0.35"/>
-      <stop offset="50%" stop-color="#3ECFCF" stop-opacity="0.12"/>
-      <stop offset="100%" stop-color="#3ECFCF" stop-opacity="0"/>
-    </radialGradient>
-    <!-- Ground glow -->
-    <radialGradient id="groundGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"  stop-color="#3ECFCF" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#3ECFCF" stop-opacity="0"/>
-    </radialGradient>
-    <!-- Star filter -->
-    <filter id="starGlow">
-      <feGaussianBlur stdDeviation="1.5" result="glow"/>
-      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <clipPath id="round"><rect x="0" y="0" width="192" height="192" rx="38" ry="38"/></clipPath>
   </defs>
 
-  <!-- Background: rounded cosmic square -->
-  <rect x="0" y="0" width="192" height="192" rx="38" fill="url(#bg)"/>
+  <!-- Deep-space background -->
+  <rect x="0" y="0" width="192" height="192" rx="38" ry="38" fill="#0C0820"/>
 
-  <!-- Nebula wisps -->
-  <ellipse cx="50" cy="45" rx="55" ry="35" fill="#4020A0" opacity="0.12"/>
-  <ellipse cx="155" cy="60" rx="45" ry="30" fill="#20A0A0" opacity="0.08"/>
-  <ellipse cx="96" cy="155" rx="70" ry="25" fill="#3ECFCF" opacity="0.06"/>
+  <g clip-path="url(#round)">
+    <!-- Nebula bands (flat, no gradients — pixel-art purity) -->
+    <rect x="0"  y="32" width="192" height="8" fill="#12083A"/>
+    <rect x="0"  y="96" width="192" height="8" fill="#100830"/>
 
-  <!-- Stars (distant) -->
-  <g filter="url(#starGlow)">
-    <circle cx="28"  cy="24"  r="1.2" fill="#EAFBFB" opacity="0.9"/>
-    <circle cx="165" cy="18"  r="1.6" fill="#FFE899" opacity="0.85"/>
-    <circle cx="172" cy="52"  r="1.0" fill="#C8DCFF" opacity="0.7"/>
-    <circle cx="22"  cy="68"  r="0.9" fill="#EAFBFB" opacity="0.6"/>
-    <circle cx="48"  cy="12"  r="1.3" fill="#D8B0FF" opacity="0.8"/>
-    <circle cx="140" cy="30"  r="0.8" fill="#EAFBFB" opacity="0.75"/>
-    <circle cx="80"  cy="18"  r="1.1" fill="#FFE899" opacity="0.65"/>
-    <circle cx="120" cy="14"  r="0.7" fill="#C8DCFF" opacity="0.55"/>
-    <circle cx="15"  cy="100" r="1.0" fill="#EAFBFB" opacity="0.5"/>
-    <circle cx="178" cy="95"  r="1.2" fill="#D8B0FF" opacity="0.6"/>
-    <circle cx="35"  cy="140" r="0.9" fill="#FFE899" opacity="0.45"/>
-    <circle cx="160" cy="135" r="1.1" fill="#C8DCFF" opacity="0.55"/>
+    <!-- Stars: dim -->
+    <g fill="#A0B8FF">
+      <rect x="32"  y="8"  width="8" height="8"/>
+      <rect x="168" y="24" width="8" height="8"/>
+      <rect x="168" y="80" width="8" height="8"/>
+    </g>
+    <!-- Stars: cool white -->
+    <g fill="#EAFBFB">
+      <rect x="160" y="16" width="8" height="8"/>
+      <rect x="16"  y="40" width="8" height="8"/>
+      <rect x="16"  y="80" width="8" height="8"/>
+    </g>
+    <!-- Stars: warm (yellow) -->
+    <g fill="#FFE899">
+      <rect x="136" y="8"  width="8" height="8"/>
+      <rect x="16"  y="24" width="8" height="8"/>
+    </g>
+    <!-- Stars: pale cyan (distant) -->
+    <g fill="#C8DCFF">
+      <rect x="168" y="48" width="8" height="8"/>
+    </g>
+
+    <!-- Antenna tip (bright core) -->
+    <g fill="#EAFFFF">
+      <rect x="72"  y="0" width="8" height="8"/>
+      <rect x="112" y="0" width="8" height="8"/>
+    </g>
+    <!-- Antenna glow -->
+    <g fill="#80F0F0">
+      <rect x="72"  y="8" width="8" height="8"/>
+      <rect x="112" y="8" width="8" height="8"/>
+    </g>
+    <!-- Antenna stems -->
+    <g fill="#3ECFCF">
+      <rect x="72"  y="16" width="8" height="16"/>
+      <rect x="112" y="16" width="8" height="16"/>
+    </g>
+
+    <!-- Body: highlight pixels (*) along left edge -->
+    <g fill="#F0C8F0">
+      <rect x="64" y="32"  width="8" height="8"/>   <!-- r4 c8 -->
+      <rect x="56" y="40"  width="8" height="8"/>   <!-- r5 c7 -->
+      <rect x="48" y="48"  width="8" height="8"/>   <!-- r6 c6 -->
+      <rect x="40" y="56"  width="8" height="56"/>  <!-- r7-13 c5 (vertical run) -->
+      <rect x="48" y="112" width="8" height="8"/>   <!-- r14 c6 -->
+      <rect x="56" y="120" width="8" height="8"/>   <!-- r15 c7 -->
+      <rect x="64" y="128" width="8" height="8"/>   <!-- r16 c8 -->
+      <rect x="80" y="136" width="8" height="8"/>   <!-- r17 c10 -->
+    </g>
+
+    <!-- Body: dark pixels (@) along right edge -->
+    <g fill="#9F60A0">
+      <rect x="120" y="32"  width="8" height="8"/>   <!-- r4 c15 -->
+      <rect x="128" y="40"  width="8" height="8"/>   <!-- r5 c16 -->
+      <rect x="136" y="48"  width="8" height="8"/>   <!-- r6 c17 -->
+      <rect x="144" y="56"  width="8" height="56"/>  <!-- r7-13 c18 -->
+      <rect x="136" y="112" width="8" height="8"/>   <!-- r14 c17 -->
+      <rect x="128" y="120" width="8" height="8"/>   <!-- r15 c16 -->
+      <rect x="120" y="128" width="8" height="8"/>   <!-- r16 c15 -->
+      <rect x="104" y="136" width="8" height="8"/>   <!-- r17 c13 -->
+    </g>
+
+    <!-- Body: mid fill (#D8A0D8) — sliced per row so eyes/mouth carve out -->
+    <g fill="#D8A0D8">
+      <!-- r4 cols 9-14 -->
+      <rect x="72"  y="32"  width="48" height="8"/>
+      <!-- r5 cols 8-15 -->
+      <rect x="64"  y="40"  width="64" height="8"/>
+      <!-- r6 cols 7-16 -->
+      <rect x="56"  y="48"  width="80" height="8"/>
+      <!-- r7 cols 6-17 -->
+      <rect x="48"  y="56"  width="96" height="8"/>
+      <!-- r8 cols 6-17 -->
+      <rect x="48"  y="64"  width="96" height="8"/>
+      <!-- r9: c6 + c10-13 + c17 (eyes at 7-9 and 14-16) -->
+      <rect x="48"  y="72"  width="8"  height="8"/>
+      <rect x="80"  y="72"  width="32" height="8"/>
+      <rect x="136" y="72"  width="8"  height="8"/>
+      <!-- r10: c6 + c10-13 + c17 -->
+      <rect x="48"  y="80"  width="8"  height="8"/>
+      <rect x="80"  y="80"  width="32" height="8"/>
+      <rect x="136" y="80"  width="8"  height="8"/>
+      <!-- r11 cols 6-17 -->
+      <rect x="48"  y="88"  width="96" height="8"/>
+      <!-- r12: c7-9 + c14-16 (cheeks at 6,17; mouth at 10-13) -->
+      <rect x="56"  y="96"  width="24" height="8"/>
+      <rect x="112" y="96"  width="24" height="8"/>
+      <!-- r13 cols 6-17 -->
+      <rect x="48"  y="104" width="96" height="8"/>
+      <!-- r14 cols 7-16 -->
+      <rect x="56"  y="112" width="80" height="8"/>
+      <!-- r15 cols 8-15 -->
+      <rect x="64"  y="120" width="64" height="8"/>
+      <!-- r16 cols 9-14 -->
+      <rect x="72"  y="128" width="48" height="8"/>
+      <!-- r17 cols 11-12 -->
+      <rect x="88"  y="136" width="16" height="8"/>
+    </g>
+
+    <!-- Eye whites -->
+    <g fill="#EAFBFB">
+      <!-- r9 left (cols 7-9) and right (cols 14-16) — 3 wide -->
+      <rect x="56"  y="72" width="24" height="8"/>
+      <rect x="112" y="72" width="24" height="8"/>
+      <!-- r10 corners around pupil (whites at c7, c9, c14, c16) -->
+      <rect x="56"  y="80" width="8" height="8"/>
+      <rect x="72"  y="80" width="8" height="8"/>
+      <rect x="112" y="80" width="8" height="8"/>
+      <rect x="128" y="80" width="8" height="8"/>
+    </g>
+
+    <!-- Pupils -->
+    <g fill="#120820">
+      <rect x="64"  y="80" width="8" height="8"/>   <!-- r10 c8 -->
+      <rect x="120" y="80" width="8" height="8"/>   <!-- r10 c15 -->
+    </g>
+
+    <!-- Cheeks -->
+    <g fill="#E88098">
+      <rect x="48"  y="96" width="8" height="8"/>   <!-- r12 c6 -->
+      <rect x="136" y="96" width="8" height="8"/>   <!-- r12 c17 -->
+    </g>
+
+    <!-- Mouth -->
+    <g fill="#6A2050">
+      <rect x="80" y="96" width="32" height="8"/>   <!-- r12 cols 10-13 -->
+    </g>
+
+    <!-- Ground shadow under pet (row 18 cols 7-16) -->
+    <g fill="#140828">
+      <rect x="56" y="144" width="80" height="8"/>
+    </g>
+
+    <!-- Ground crystal sparkles (row 19) — flanking the pet silhouette -->
+    <g fill="#80F0F0"><rect x="16"  y="152" width="8" height="8"/></g>
+    <g fill="#3ECFCF"><rect x="24"  y="152" width="8" height="8"/></g>
+    <g fill="#FFE899"><rect x="160" y="152" width="8" height="8"/></g>
+    <g fill="#D8B0FF"><rect x="168" y="152" width="8" height="8"/></g>
+
+    <!-- Ground surface: lighter top edge + deep base -->
+    <rect x="0" y="160" width="192" height="8"  fill="#4A2A6A"/>
+    <rect x="0" y="168" width="192" height="24" fill="#2A1A4A"/>
+
+    <!-- Ground texture: scattered dark flecks -->
+    <g fill="#1A0A30">
+      <rect x="24"  y="176" width="8" height="8"/>
+      <rect x="72"  y="184" width="8" height="8"/>
+      <rect x="120" y="176" width="8" height="8"/>
+      <rect x="160" y="184" width="8" height="8"/>
+    </g>
   </g>
-
-  <!-- Shooting star -->
-  <line x1="145" y1="22" x2="118" y2="38" stroke="url(#spec)" stroke-width="1.5" opacity="0.7" stroke-linecap="round"/>
-  <circle cx="145" cy="22" r="1.8" fill="#FFFFFF" opacity="0.9"/>
-
-  <!-- Ground: crystal formations -->
-  <g opacity="0.5">
-    <polygon points="30,158 33,142 36,158" fill="#40C8C8"/>
-    <polygon points="36,158 38,148 40,158" fill="#309898"/>
-    <polygon points="55,158 57,145 59,158" fill="#D4A534"/>
-    <polygon points="130,158 133,140 136,158" fill="#40C8C8"/>
-    <polygon points="136,158 138,149 140,158" fill="#309898"/>
-    <polygon points="155,158 157,147 159,158" fill="#C080E0"/>
-    <polygon points="75,158 77,150 79,158" fill="#E0A060"/>
-    <polygon points="110,158 112,146 114,158" fill="#80E080"/>
-  </g>
-  <!-- Crystal tips glow -->
-  <circle cx="33" cy="142" r="2" fill="#80F0F0" opacity="0.6"/>
-  <circle cx="57" cy="145" r="2" fill="#FFE899" opacity="0.5"/>
-  <circle cx="133" cy="140" r="2" fill="#80F0F0" opacity="0.6"/>
-  <circle cx="157" cy="147" r="2" fill="#E0B0FF" opacity="0.5"/>
-
-  <!-- Ground line + glow -->
-  <ellipse cx="96" cy="162" rx="80" ry="8" fill="url(#groundGlow)"/>
-  <line x1="10" y1="158" x2="182" y2="158" stroke="#3ECFCF" stroke-width="1" opacity="0.3"/>
-
-  <!-- Cosmic aura behind pet -->
-  <ellipse cx="96" cy="108" rx="58" ry="52" fill="url(#aura)"/>
-
-  <!-- Ground shadow -->
-  <ellipse cx="96" cy="155" rx="32" ry="5" fill="#000000" opacity="0.25"/>
-
-  <!-- Pet body -->
-  <ellipse cx="96" cy="115" rx="38" ry="42" fill="url(#bodyGlow)"/>
-
-  <!-- Body rim light (top arc) -->
-  <ellipse cx="96" cy="112" rx="36" ry="40" fill="none" stroke="#E0C0E0" stroke-width="1.5" opacity="0.4"
-           stroke-dasharray="60 200" stroke-dashoffset="-30"/>
-
-  <!-- Specular highlight on body -->
-  <ellipse cx="82" cy="95" rx="16" ry="20" fill="url(#spec)"/>
-
-  <!-- Core pattern (inner glow rings) -->
-  <ellipse cx="96" cy="118" rx="18" ry="15" fill="none" stroke="#E0B0FF" stroke-width="0.8" opacity="0.25"/>
-  <ellipse cx="96" cy="118" rx="12" ry="10" fill="none" stroke="#FFE899" stroke-width="0.6" opacity="0.2"/>
-
-  <!-- Eyes: large, expressive, with soul -->
-  <!-- Left eye -->
-  <ellipse cx="82" cy="106" rx="10" ry="11" fill="#EAFBFB"/>
-  <ellipse cx="82" cy="106" rx="10" ry="11" fill="none" stroke="#A080B0" stroke-width="0.6" opacity="0.4"/>
-  <!-- Left pupil -->
-  <circle cx="82" cy="108" r="5.5" fill="#1A1030"/>
-  <!-- Left iris ring -->
-  <circle cx="82" cy="108" r="5.5" fill="none" stroke="#6040A0" stroke-width="1" opacity="0.5"/>
-  <!-- Left eye sparkle (main) -->
-  <circle cx="79" cy="104" r="2.5" fill="#FFFFFF" opacity="0.95"/>
-  <!-- Left eye sparkle (small) -->
-  <circle cx="85" cy="110" r="1.2" fill="#FFFFFF" opacity="0.6"/>
-  <!-- Left eye cosmic sparkle -->
-  <circle cx="78" cy="107" r="0.8" fill="#3ECFCF" opacity="0.7"/>
-
-  <!-- Right eye -->
-  <ellipse cx="110" cy="106" rx="10" ry="11" fill="#EAFBFB"/>
-  <ellipse cx="110" cy="106" rx="10" ry="11" fill="none" stroke="#A080B0" stroke-width="0.6" opacity="0.4"/>
-  <!-- Right pupil -->
-  <circle cx="110" cy="108" r="5.5" fill="#1A1030"/>
-  <!-- Right iris ring -->
-  <circle cx="110" cy="108" r="5.5" fill="none" stroke="#6040A0" stroke-width="1" opacity="0.5"/>
-  <!-- Right eye sparkle (main) -->
-  <circle cx="107" cy="104" r="2.5" fill="#FFFFFF" opacity="0.95"/>
-  <!-- Right eye sparkle (small) -->
-  <circle cx="113" cy="110" r="1.2" fill="#FFFFFF" opacity="0.6"/>
-  <!-- Right eye cosmic sparkle -->
-  <circle cx="106" cy="107" r="0.8" fill="#3ECFCF" opacity="0.7"/>
-
-  <!-- Mouth: gentle happy curve -->
-  <path d="M 88 130 Q 96 137 104 130" fill="none" stroke="#6A4060" stroke-width="2" stroke-linecap="round"/>
-
-  <!-- Blush cheeks -->
-  <ellipse cx="72" cy="122" rx="7" ry="4" fill="#E08090" opacity="0.3"/>
-  <ellipse cx="120" cy="122" rx="7" ry="4" fill="#E08090" opacity="0.3"/>
-
-  <!-- Antennae with cosmic tips -->
-  <path d="M 82 74 Q 76 50 64 38" fill="none" stroke="#3ECFCF" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M 110 74 Q 116 50 128 38" fill="none" stroke="#3ECFCF" stroke-width="2.5" stroke-linecap="round"/>
-  <!-- Antenna glow tips -->
-  <circle cx="64" cy="38" r="5" fill="#3ECFCF" opacity="0.3"/>
-  <circle cx="64" cy="38" r="3" fill="#80F0F0"/>
-  <circle cx="128" cy="38" r="5" fill="#3ECFCF" opacity="0.3"/>
-  <circle cx="128" cy="38" r="3" fill="#80F0F0"/>
-  <!-- Antenna sparkle -->
-  <circle cx="64" cy="38" r="1.2" fill="#FFFFFF" opacity="0.9"/>
-  <circle cx="128" cy="38" r="1.2" fill="#FFFFFF" opacity="0.9"/>
-
-  <!-- Floating cosmic particles around pet -->
-  <circle cx="52"  cy="90"  r="1.5" fill="#FFE899" opacity="0.5"/>
-  <circle cx="142" cy="85"  r="1.2" fill="#3ECFCF" opacity="0.45"/>
-  <circle cx="60"  cy="130" r="1.0" fill="#D8B0FF" opacity="0.4"/>
-  <circle cx="135" cy="125" r="1.3" fill="#FFE899" opacity="0.35"/>
-  <circle cx="45"  cy="110" r="0.8" fill="#80E080" opacity="0.3"/>
-  <circle cx="148" cy="108" r="0.9" fill="#E08090" opacity="0.35"/>
-
-  <!-- Fireflies near ground -->
-  <circle cx="25"  cy="150" r="2" fill="#FFE899" opacity="0.4"/>
-  <circle cx="25"  cy="150" r="4" fill="#FFE899" opacity="0.1"/>
-  <circle cx="168" cy="148" r="1.8" fill="#80F0F0" opacity="0.35"/>
-  <circle cx="168" cy="148" r="4" fill="#80F0F0" opacity="0.08"/>
-  <circle cx="85"  cy="153" r="1.5" fill="#D8B0FF" opacity="0.3"/>
 </svg>
