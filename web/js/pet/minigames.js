@@ -42,12 +42,21 @@ const GameType = {
 };
 
 // ---------------------------------------------------------------------------
-// Shared audio context for the ambient minigames (sustained tones, pads).
-// Kept separate from SoundEngine — these games need long releases and custom
-// chords that don't fit the short percussive SFX palette.
+// Shared synth core for the musical minigames.
+//
+// All voices route through _ambMaster -> SoundEngine master bus (limiter +
+// destination) and can also send a portion of their signal into
+// _ambReverbSend (which connects to the shared convolution reverb inside
+// SoundEngine). Every voice uses proper ADSR scheduling (setTargetAtTime /
+// linearRampToValueAtTime) to avoid click-on-attack and click-on-release.
+//
+// The "amb" prefix is kept for backwards compatibility with existing
+// minigame code that calls ambPluck / ambStartPad / ambStopPad.
 // ---------------------------------------------------------------------------
 let _ambCtx = null;
-let _ambMaster = null;
+let _ambMaster = null;       // per-minigame master gain -> SoundEngine master
+let _ambComp = null;         // soft compressor before SoundEngine master
+let _ambReverbSend = null;   // local send-level control -> SoundEngine reverb bus
 let _ambPad = null;
 
 function ambCtx() {
@@ -60,16 +69,32 @@ function ambCtx() {
         const main = SoundEngine.getMasterBus && SoundEngine.getMasterBus();
         if (ctx && main) {
             _ambCtx = ctx;
+            // Gentle soft-knee compressor so chord pile-ups don't clip the
+            // shared master. Threshold is high to preserve dynamics; ratio
+            // moderate so the instruments still breathe.
+            _ambComp = ctx.createDynamicsCompressor();
+            _ambComp.threshold.value = -14;
+            _ambComp.knee.value = 10;
+            _ambComp.ratio.value = 3.0;
+            _ambComp.attack.value = 0.008;
+            _ambComp.release.value = 0.18;
             _ambMaster = ctx.createGain();
-            // Minigame synth foreground. The stage ambient is ducked
-            // separately via SoundEngine.duckAmbient() so we don't need an
-            // aggressive boost here.
             _ambMaster.gain.value = 0.9;
-            _ambMaster.connect(main);
+            _ambMaster.connect(_ambComp);
+            _ambComp.connect(main);
+            // Reverb send into SoundEngine's shared convolver, if exposed.
+            try {
+                const rev = SoundEngine.getReverbBus && SoundEngine.getReverbBus();
+                if (rev) {
+                    _ambReverbSend = ctx.createGain();
+                    _ambReverbSend.gain.value = 0.9;  // per-voice gain controls send amount
+                    _ambReverbSend.connect(rev);
+                }
+            } catch (_) {}
             return _ambCtx;
         }
     } catch (_) {}
-    // Fallback: stand-alone context
+    // Fallback: stand-alone context (no reverb send)
     try {
         const AC = window.AudioContext || window.webkitAudioContext;
         _ambCtx = new AC();
@@ -90,24 +115,207 @@ function ensureAmbAwake() {
     return ctx;
 }
 
-function ambPluck(freq, dur = 2.2, type = 'triangle', peak = 0.18) {
+// ---------------------------------------------------------------------------
+// lalSynth — small reusable synth helpers. Each returns an object with a
+// release(releaseSec) method for clean polyphony management.
+// ---------------------------------------------------------------------------
+
+// Connect a per-voice send into the shared reverb bus with a given amount.
+function _sendReverb(node, amount) {
+    if (!_ambReverbSend || !node || amount <= 0) return;
+    try {
+        const g = _ambCtx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(_ambReverbSend);
+    } catch (_) {}
+}
+
+// Quantise a MIDI-like semitone to a pitch in Hz relative to C4.
+function _hzFromSemi(semiFromC4) { return 261.63 * Math.pow(2, semiFromC4 / 12); }
+
+// Stereo panner factory (falls back to plain gain on old Safari).
+function _panner(pan) {
+    const ctx = _ambCtx;
+    if (!ctx) return null;
+    try {
+        const p = ctx.createStereoPanner();
+        p.pan.value = Math.max(-1, Math.min(1, pan));
+        return p;
+    } catch (_) {
+        return ctx.createGain();   // silent fallback (no panning)
+    }
+}
+
+// Polyphonic plucked-note voice — detuned saw + triangle + sine shimmer through
+// a resonant low-pass filter. Velocity 0..1 shapes amplitude, filter cutoff,
+// and attack length (lighter = rounder, harder = snappier).
+function lalPluck(freq, {
+    dur = 2.4, velocity = 0.7, type = 'triangle', peak = 0.20,
+    pan = 0, reverb = 0.35, filterTrack = true,
+} = {}) {
     const ctx = ensureAmbAwake();
-    if (!ctx) return;
+    if (!ctx) return null;
     const t = ctx.currentTime;
-    // Two layered oscillators (fifth interval) for richness
-    [1, 1.5].forEach((mul, i) => {
+    const v = Math.max(0.05, Math.min(1, velocity));
+
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    const attack = 0.006 + (1 - v) * 0.020;    // harder = snappier
+    const peakGain = peak * (0.55 + 0.45 * v);
+    out.gain.linearRampToValueAtTime(peakGain, t + attack);
+    out.gain.setTargetAtTime(0.0001, t + attack, Math.max(0.25, dur * 0.35));
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 1.1;
+    const cutHi = 1600 + v * 5200;
+    const cutLo = 420 + v * 800;
+    lp.frequency.setValueAtTime(cutHi, t);
+    if (filterTrack) lp.frequency.exponentialRampToValueAtTime(Math.max(220, cutLo), t + dur * 0.9);
+
+    const pan1 = _panner(pan);
+    if (pan1) { out.connect(pan1); pan1.connect(_ambMaster); }
+    else       { out.connect(_ambMaster); }
+    lp.connect(out);
+
+    const oscs = [];
+    // Fundamental pair (slight detune, triangle/saw mix)
+    [[0, type, 0.55], [+8, 'sine', 0.30], [-8, 'sine', 0.28]].forEach(([det, oType, vol]) => {
         const o = ctx.createOscillator();
+        o.type = oType;
+        o.frequency.value = freq;
+        o.detune.value = det;
         const g = ctx.createGain();
-        o.type = i === 0 ? type : 'sine';
-        o.frequency.value = freq * mul;
-        o.detune.value = (i === 0 ? 0 : 4);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(peak * (i === 0 ? 1 : 0.35), t + 0.015);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.connect(g).connect(_ambMaster);
+        g.gain.value = vol;
+        o.connect(g).connect(lp);
         o.start(t);
-        o.stop(t + dur + 0.1);
+        o.stop(t + dur + 0.3);
+        oscs.push(o);
     });
+    // Octave shimmer (quieter, sine)
+    {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = freq * 2;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.10 * v, t + attack);
+        g.gain.setTargetAtTime(0.0001, t + attack, dur * 0.25);
+        o.connect(g).connect(lp);
+        o.start(t);
+        o.stop(t + dur + 0.3);
+        oscs.push(o);
+    }
+
+    _sendReverb(out, reverb * (0.3 + 0.7 * v));
+    return {
+        release(rSec = 0.8) {
+            const tt = ctx.currentTime;
+            out.gain.cancelScheduledValues(tt);
+            out.gain.setValueAtTime(out.gain.value, tt);
+            out.gain.exponentialRampToValueAtTime(0.0001, tt + rSec);
+            setTimeout(() => { try { oscs.forEach(o => o.stop()); } catch (_) {} }, rSec * 1000 + 100);
+        },
+    };
+}
+
+// Sustained voice with shared ADSR and a live-controllable filter. Intended
+// for the breath instrument and theremin. Returns an object exposing
+// setFreq(hz, glideSec), setCutoff(hz, rampSec), setGain(0..1, rampSec),
+// setVibrato(depthSemi, rateHz), and release(rSec).
+function lalSustain({
+    freq = 220, type = 'triangle', detune = 0, pan = 0,
+    cutoff = 2200, q = 1.1, peak = 0.18,
+    attack = 0.15, reverb = 0.35, voices = 3,
+} = {}) {
+    const ctx = ensureAmbAwake();
+    if (!ctx) return null;
+    const t = ctx.currentTime;
+
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(peak, t + attack);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = q;
+    lp.frequency.setValueAtTime(cutoff, t);
+    lp.connect(out);
+
+    const p = _panner(pan);
+    out.connect(p || _ambMaster);
+    if (p) p.connect(_ambMaster);
+
+    // Vibrato LFO (depth in cents, initial 0 so it's silent until enabled).
+    const vibLfo = ctx.createOscillator();
+    const vibAmt = ctx.createGain();
+    vibLfo.frequency.value = 5.2;
+    vibAmt.gain.value = 0;
+    vibLfo.connect(vibAmt);
+    vibLfo.start(t);
+
+    const oscs = [];
+    // Multi-voice detune stack for analog warmth.
+    const detunes = voices >= 3 ? [-detune, 0, +detune] : (voices === 2 ? [-detune, +detune] : [0]);
+    for (const d of detunes) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.value = freq;
+        o.detune.value = d;
+        vibAmt.connect(o.detune);   // vibrato modulates detune in cents
+        o.connect(lp);
+        o.start(t);
+        oscs.push(o);
+    }
+
+    _sendReverb(out, reverb);
+
+    return {
+        setFreq(hz, glideSec = 0.04) {
+            const tt = ctx.currentTime;
+            oscs.forEach(o => {
+                o.frequency.cancelScheduledValues(tt);
+                o.frequency.setValueAtTime(o.frequency.value, tt);
+                o.frequency.linearRampToValueAtTime(Math.max(20, hz), tt + Math.max(0.005, glideSec));
+            });
+        },
+        setCutoff(hz, rampSec = 0.05) {
+            const tt = ctx.currentTime;
+            lp.frequency.cancelScheduledValues(tt);
+            lp.frequency.setValueAtTime(lp.frequency.value, tt);
+            lp.frequency.linearRampToValueAtTime(Math.max(80, hz), tt + rampSec);
+        },
+        setGain(g, rampSec = 0.05) {
+            const tt = ctx.currentTime;
+            const clamped = Math.max(0.0001, Math.min(1, g));
+            out.gain.cancelScheduledValues(tt);
+            out.gain.setValueAtTime(out.gain.value, tt);
+            out.gain.linearRampToValueAtTime(clamped, tt + rampSec);
+        },
+        setVibrato(depthSemi, rateHz = 5.2) {
+            const tt = ctx.currentTime;
+            vibAmt.gain.cancelScheduledValues(tt);
+            vibAmt.gain.setValueAtTime(vibAmt.gain.value, tt);
+            // Depth in *cents* (100 per semitone)
+            vibAmt.gain.linearRampToValueAtTime(Math.max(0, depthSemi * 100), tt + 0.06);
+            vibLfo.frequency.setValueAtTime(Math.max(0.1, rateHz), tt);
+        },
+        release(rSec = 0.8) {
+            const tt = ctx.currentTime;
+            out.gain.cancelScheduledValues(tt);
+            out.gain.setValueAtTime(out.gain.value, tt);
+            out.gain.exponentialRampToValueAtTime(0.0001, tt + rSec);
+            setTimeout(() => {
+                try { oscs.forEach(o => o.stop()); } catch (_) {}
+                try { vibLfo.stop(); } catch (_) {}
+            }, rSec * 1000 + 80);
+        },
+    };
+}
+
+// Backwards-compatible wrapper used by KORIMA/VYTHI/SHALIM arp code.
+function ambPluck(freq, dur = 2.2, type = 'triangle', peak = 0.18) {
+    return lalPluck(freq, { dur, velocity: 0.75, type, peak, reverb: 0.3 });
 }
 
 function ambStartPad(rootHz = 65.4) {  // C2
@@ -116,18 +324,26 @@ function ambStartPad(rootHz = 65.4) {  // C2
     const t = ctx.currentTime;
     _ambPad = { osc: [], gain: ctx.createGain() };
     _ambPad.gain.gain.setValueAtTime(0.0001, t);
-    _ambPad.gain.gain.exponentialRampToValueAtTime(0.06, t + 3);
+    _ambPad.gain.gain.linearRampToValueAtTime(0.06, t + 3);
     _ambPad.gain.connect(_ambMaster);
-    // Three detuned oscillators for a soft pad
-    [1, 1.001, 1.5].forEach((mul, i) => {
+    // Five detuned oscillators for a wide, slightly-moving pad (root, octave,
+    // fifth, slightly-detuned root above for chorus, sub).
+    [[1, 'triangle', 0, 0.42],
+     [1.001, 'triangle', 7, 0.35],
+     [0.999, 'triangle', -6, 0.35],
+     [1.5, 'sine', 3, 0.22],
+     [0.5, 'sine', 0, 0.30]].forEach(([mul, type, detune, vol]) => {
         const o = ctx.createOscillator();
-        o.type = i === 2 ? 'sine' : 'triangle';
+        const g = ctx.createGain();
+        o.type = type;
         o.frequency.value = rootHz * mul;
-        o.detune.value = (i - 1) * 6;
-        o.connect(_ambPad.gain);
+        o.detune.value = detune;
+        g.gain.value = vol;
+        o.connect(g).connect(_ambPad.gain);
         o.start(t);
         _ambPad.osc.push(o);
     });
+    _sendReverb(_ambPad.gain, 0.5);
 }
 
 function ambStopPad() {
@@ -832,29 +1048,41 @@ let _tick = 0;
 // ---------------------------------------------------------------------------
 const HARP_DURATION_TICKS = 90 * 60;   // ~90 seconds at 60 fps
 const HARP_STRINGS = [
-    // C major pentatonic across two octaves (C4 → D5)
+    // Lalìen pentatonic across ~2.5 octaves — wider range lets the keeper
+    // play proper melodies with low/high voicing. The original 7-string
+    // range was too cramped for actual musical phrases.
+    { name: 'C3', hz: 130.81 },
+    { name: 'D3', hz: 146.83 },
+    { name: 'F3', hz: 174.61 },
+    { name: 'G3', hz: 196.00 },
+    { name: 'A3', hz: 220.00 },
     { name: 'C4', hz: 261.63 },
     { name: 'D4', hz: 293.66 },
-    { name: 'E4', hz: 329.63 },
+    { name: 'F4', hz: 349.23 },
     { name: 'G4', hz: 392.00 },
     { name: 'A4', hz: 440.00 },
     { name: 'C5', hz: 523.25 },
     { name: 'D5', hz: 587.33 },
+    { name: 'F5', hz: 698.46 },
 ];
 let harp = {
     t: 0,
     notes: 0,
     lastStringAt: [],   // tick of last pluck per string (for glow decay)
+    lastVel: [],        // velocity of last pluck per string (for glow size)
     particles: [],      // rising motes from plucked strings
     lastDragString: -1,
+    lastHzAt: 0,        // timestamp debounce for rapid drag-glissando
 };
 
 function harpInit() {
     harp.t = 0;
     harp.notes = 0;
     harp.lastStringAt = new Array(HARP_STRINGS.length).fill(-9999);
+    harp.lastVel = new Array(HARP_STRINGS.length).fill(0.6);
     harp.particles = [];
     harp.lastDragString = -1;
+    harp.lastHzAt = 0;
     ambStartPad(65.4);   // C2 drone
 }
 
@@ -882,25 +1110,43 @@ function harpHitString(x, y, vw, vh) {
     return -1;
 }
 
-function harpPluck(i) {
+function harpPluck(i, velocity = 0.7, yRel = 0.5) {
     if (i < 0 || i >= HARP_STRINGS.length) return;
     harp.lastStringAt[i] = harp.t;
+    harp.lastVel[i] = velocity;
     harp.notes++;
-    ambPluck(HARP_STRINGS[i].hz, 2.6, 'triangle', 0.22);
-    // Add particles at the top of this string
+    const hz = HARP_STRINGS[i].hz;
+    // Pan across the stereo field by string index so low strings sit left,
+    // high strings right — gives the harp a real spatial feel.
+    const pan = (i / (HARP_STRINGS.length - 1) - 0.5) * 0.8;
+    // Longer release for low strings, shorter for high ones — emulates a
+    // real harp's physical damping.
+    const dur = 3.2 - (i / HARP_STRINGS.length) * 1.6;
+    lalPluck(hz, {
+        dur, velocity,
+        type: velocity > 0.65 ? 'sawtooth' : 'triangle',
+        peak: 0.22,
+        pan,
+        reverb: 0.32 + velocity * 0.1,
+        filterTrack: true,
+    });
+    // Light haptic on every attack (mobile only)
+    try { navigator.vibrate && navigator.vibrate(Math.round(8 + velocity * 14)); } catch (_) {}
+    // Particles at the top of this string
     const vw = 800, vh = 400;
     const margin = Math.min(60, vw * 0.08);
     const span = vw - margin * 2;
     const step = span / (HARP_STRINGS.length - 1);
     const sx = margin + i * step;
-    const hue = 180 + i * 22;
-    for (let k = 0; k < 6; k++) {
+    const hue = 180 + i * 14;
+    const particleCount = Math.round(4 + velocity * 8);
+    for (let k = 0; k < particleCount; k++) {
         harp.particles.push({
             x: sx + (Math.random() - 0.5) * 14,
             y: vh * 0.5 + (Math.random() - 0.5) * 40,
             vx: (Math.random() - 0.5) * 0.6,
-            vy: -0.8 - Math.random() * 0.8,
-            r: 2 + Math.random() * 2,
+            vy: -0.8 - Math.random() * (1.2 + velocity),
+            r: 2 + Math.random() * (2 + velocity * 2),
             hue,
             life: 1,
         });
@@ -911,15 +1157,24 @@ function harpHandleTouch(x, y, dragging, vw, vh) {
     vw = vw || 800; vh = vh || 400;
     const i = harpHitString(x, y, vw, vh);
     if (i < 0) { harp.lastDragString = -1; return; }
+    // Velocity = vertical position on the string: top = soft, middle = strong,
+    // bottom = soft again (like plucking near the bridge vs the sounding hole).
+    const yRel = Math.max(0, Math.min(1, (y - vh * 0.12) / (vh * 0.80)));
+    // Bell-shaped curve peaked at 0.5 -> hardest attack in the middle.
+    const vel = 0.35 + 0.65 * (1 - Math.abs(yRel - 0.5) * 1.6);
     if (dragging) {
-        // While dragging, only trigger when crossing into a different string
-        if (i !== harp.lastDragString) {
-            harpPluck(i);
+        // While dragging (glissando), only trigger when crossing into a
+        // different string AND at least 55 ms since the last cross — keeps
+        // fast glissandos from bricking the voice pool.
+        if (i !== harp.lastDragString && (performance.now() - harp.lastHzAt) > 55) {
+            harpPluck(i, Math.min(0.7, vel), yRel);   // softer while gliding
             harp.lastDragString = i;
+            harp.lastHzAt = performance.now();
         }
     } else {
-        harpPluck(i);
+        harpPluck(i, vel, yRel);
         harp.lastDragString = i;
+        harp.lastHzAt = performance.now();
     }
 }
 
@@ -950,8 +1205,11 @@ function renderHarp(ctx, w, h) {
     for (let i = 0; i < HARP_STRINGS.length; i++) {
         const sx = margin + i * step;
         const age = harp.t - harp.lastStringAt[i];
-        const glow = age < 120 ? (1 - age / 120) : 0;
-        const hue = 180 + i * 22;
+        // Velocity modulates glow duration — harder plucks glow longer.
+        const v = harp.lastVel[i] || 0.6;
+        const glowLen = 90 + v * 90;
+        const glow = age < glowLen ? (1 - age / glowLen) : 0;
+        const hue = 180 + i * 14;
 
         // Base string (thin, faint)
         ctx.strokeStyle = `hsla(${hue},60%,70%,0.35)`;
@@ -961,13 +1219,12 @@ function renderHarp(ctx, w, h) {
         ctx.lineTo(sx, h * 0.92);
         ctx.stroke();
 
-        // Glow overlay when plucked
+        // Glow overlay when plucked — amplitude scales with velocity.
         if (glow > 0) {
             ctx.strokeStyle = `hsla(${hue},80%,72%,${0.85 * glow})`;
-            ctx.lineWidth = 3 + glow * 4;
-            // Wobble: amplitude decays with age
+            ctx.lineWidth = 2.5 + glow * (3 + v * 3);
             ctx.beginPath();
-            const amp = 8 * glow;
+            const amp = (5 + v * 10) * glow;
             for (let y = h * 0.12; y <= h * 0.92; y += 4) {
                 const dx = Math.sin((y + harp.t * 3) * 0.05) * amp;
                 if (y === h * 0.12) ctx.moveTo(sx + dx, y);
@@ -976,11 +1233,14 @@ function renderHarp(ctx, w, h) {
             ctx.stroke();
         }
 
-        // String label at top
-        ctx.fillStyle = glow > 0 ? `hsl(${hue},80%,80%)` : 'rgba(200,220,255,0.45)';
-        ctx.font = 'bold 11px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(HARP_STRINGS[i].name, sx, h * 0.08);
+        // String label at top — only show every other string at 13 strings
+        // to avoid a crowded header.
+        if (i % 2 === 0) {
+            ctx.fillStyle = glow > 0 ? `hsl(${hue},80%,80%)` : 'rgba(200,220,255,0.45)';
+            ctx.font = 'bold 10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(HARP_STRINGS[i].name, sx, h * 0.08);
+        }
     }
 
     // Particles
@@ -1005,220 +1265,423 @@ function renderHarp(ctx, w, h) {
         ctx.fillStyle = 'rgba(212,165,52,0.85)';
         ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Tocca o trascina sulle corde — ascolta il canto', w / 2, h * 0.97);
+        ctx.fillText('Tocca le corde · alto/basso = pizzicato morbido · centro = forte · trascina per glissando', w / 2, h * 0.97);
     }
 }
 
 // ---------------------------------------------------------------------------
-// VITH-ONDI — guided breathing. A target ring pulses slowly (5s inhale, 5s
-// exhale). The player's ring expands while they HOLD a finger on the canvas
-// and shrinks when they release. Goal: keep the two rings overlapped. A
-// sustained drone tracks the user's radius — pitch and brightness rise as
-// you hold, fall as you release — so syncing feels physically audible.
-// Score is accumulated every tick the two rings overlap within a tolerance.
+// VITH-ONDI — breath-driven ribbon drone.
+//
+// Complete redesign. The previous "tap-and-hold the target ring" puzzle is
+// replaced with a real drone instrument you play with your finger.
+//
+//   • Horizontal ribbon spans a slow lalìen pentatonic scale (C minor-pent,
+//     2 octaves). Finger X selects pitch, quantised to the nearest scale
+//     degree with a 12-cent glide — no dissonant mashing possible.
+//   • Vertical position controls formant / filter cutoff (breath timbre):
+//     top = bright, open vowel; bottom = dark, whispered ooooh.
+//   • Pressing and holding sustains the note; releasing lets it fade over
+//     ~1.8s so legato melodies are natural.
+//   • A soft evolving pad (tonic + fifth) plays underneath; a shimmering
+//     sidechain drone ramps in the longer you hold a single note, giving
+//     the instrument its meditative "breath-builds-into-song" quality.
+//   • Tempo of breath-style amplitude tremolo slows the longer you hold,
+//     emulating a deepening breath. Long holds sound calmer, not louder.
+//
+// The score counts unique pitches touched + cumulative sustained seconds.
+// No timing puzzle. No fail.
 // ---------------------------------------------------------------------------
-const BREATH_DURATION_TICKS = 90 * 60;      // 90s
-const BREATH_CYCLE_SEC = 10;                 // 5s inhale + 5s exhale
-const BREATH_TARGET_IN_S = 5;
-const BREATH_TARGET_OUT_S = 5;
+const BREATH_DURATION_TICKS = 90 * 60;      // 90s session
+// Scale: C minor pentatonic, two octaves (C3 → C5). Sounds good against the
+// C / G pad drone regardless of where the finger lands. Values in Hz.
+const BREATH_SCALE = [
+    130.81, 155.56, 174.61, 196.00, 233.08,
+    261.63, 311.13, 349.23, 392.00, 466.16, 523.25,
+];
+const BREATH_NOTE_NAMES = ['C3','Eb3','F3','G3','Bb3','C4','Eb4','F4','G4','Bb4','C5'];
+
 let breath = {
     t: 0,
     score: 0,
-    cycles: 0,
+    holdFrames: 0,       // total frames finger has been down (all notes)
+    uniquePitches: new Set(),
     holding: false,
-    userLevel: 0,         // 0..1, what the user is currently "breathing in"
-    targetLevel: 0,       // 0..1 script
-    syncFrames: 0,
-    lastPhase: 0,         // tracks target ring phase for cycle count
-    voice: null,          // sustained osc for the breath drone
+    touchX: 0.5,         // 0..1 normalised ribbon X
+    touchY: 0.5,         // 0..1 normalised (1 = top = bright)
+    bucket: -1,          // last scale index
+    noteStartedAt: 0,    // tick the current note started, for "slow breath"
+    ripples: [],         // visual touch ripples
+    aura: 0,             // 0..1 visual brightness
+    pad: null,           // sustained pad voice
+    voice: null,         // the main "breath" sustained voice (lalSustain)
+    harmony: null,       // optional fifth-harmony voice (double-tap toggle)
+    harmonyOn: false,
+    lastTapAt: 0,        // for double-tap detection
 };
 
-function breathStartVoice() {
+function breathStartPad() {
     const ctx = ensureAmbAwake();
-    if (!ctx) return;
-    if (breath.voice) return;
+    if (!ctx || breath.pad) return;
     const t = ctx.currentTime;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(0.07, t + 4);
     gain.connect(_ambMaster);
-    // Two-voice drone: fundamental + fifth
-    const o1 = ctx.createOscillator();
-    o1.type = 'sine'; o1.frequency.value = 130.81;   // C3
-    const o2 = ctx.createOscillator();
-    o2.type = 'triangle'; o2.frequency.value = 196.00; // G3
-    o1.connect(gain); o2.connect(gain);
-    o1.start(t); o2.start(t);
-    breath.voice = { o1, o2, gain };
+    const oscs = [];
+    // C2, G2, C3 — wide sustain pad tuned to the scale root.
+    [[65.4, 'triangle', 0, 0.42],
+     [98.0, 'sine', 0, 0.30],
+     [130.81, 'triangle', 6, 0.22],
+     [130.81, 'triangle', -6, 0.22]].forEach(([hz, type, detune, vol]) => {
+        const o = ctx.createOscillator();
+        o.type = type; o.frequency.value = hz; o.detune.value = detune;
+        const g = ctx.createGain(); g.gain.value = vol;
+        o.connect(g).connect(gain);
+        o.start(t);
+        oscs.push(o);
+    });
+    // Very slow tremolo for organic life
+    const lfo = ctx.createOscillator();
+    const lfoG = ctx.createGain();
+    lfo.frequency.value = 0.12;
+    lfoG.gain.value = 0.012;
+    lfo.connect(lfoG).connect(gain.gain);
+    lfo.start(t);
+    oscs.push(lfo);
+    _sendReverb(gain, 0.6);
+    breath.pad = { gain, oscs };
 }
 
-function breathUpdateVoice() {
-    if (!breath.voice || !_ambCtx) return;
+function breathStopPad() {
+    if (!breath.pad || !_ambCtx) return;
     const t = _ambCtx.currentTime;
-    // Gain and pitch follow user's held level
-    const gainTarget = 0.03 + breath.userLevel * 0.18;
-    breath.voice.gain.gain.cancelScheduledValues(t);
-    breath.voice.gain.gain.setValueAtTime(breath.voice.gain.gain.value, t);
-    breath.voice.gain.gain.linearRampToValueAtTime(gainTarget, t + 0.12);
-    // Detune slightly upward as breath rises
-    const detune = breath.userLevel * 120;
-    breath.voice.o1.detune.linearRampToValueAtTime(detune, t + 0.12);
-    breath.voice.o2.detune.linearRampToValueAtTime(detune * 1.3, t + 0.12);
-}
-
-function breathStopVoice() {
-    if (!breath.voice || !_ambCtx) return;
-    const t = _ambCtx.currentTime;
-    const v = breath.voice;
-    breath.voice = null;
-    v.gain.gain.cancelScheduledValues(t);
-    v.gain.gain.setValueAtTime(v.gain.gain.value, t);
-    v.gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
-    setTimeout(() => { try { v.o1.stop(); v.o2.stop(); } catch (_) {} }, 1000);
+    const p = breath.pad;
+    breath.pad = null;
+    p.gain.gain.cancelScheduledValues(t);
+    p.gain.gain.setValueAtTime(p.gain.gain.value, t);
+    p.gain.gain.exponentialRampToValueAtTime(0.0001, t + 2.0);
+    setTimeout(() => { try { p.oscs.forEach(o => o.stop()); } catch (_) {} }, 2100);
 }
 
 function breathInit() {
-    breath.t = 0; breath.score = 0; breath.cycles = 0;
-    breath.holding = false; breath.userLevel = 0; breath.targetLevel = 0;
-    breath.syncFrames = 0; breath.lastPhase = 0;
-    breathStartVoice();
+    breath.t = 0; breath.score = 0; breath.holdFrames = 0;
+    breath.uniquePitches = new Set();
+    breath.holding = false;
+    breath.touchX = 0.5; breath.touchY = 0.5;
+    breath.bucket = -1;
+    breath.noteStartedAt = 0;
+    breath.ripples = [];
+    breath.aura = 0;
+    breath.harmonyOn = false;
+    breath.voice = null;
+    breath.harmony = null;
+    breath.lastTapAt = 0;
+    breathStartPad();
 }
 
-function breathTargetAt(tSec) {
-    // Triangle-like curve smoothed via cosine: 0 at start, 1 at BREATH_TARGET_IN_S,
-    // 0 at BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S, loops.
-    const cyc = BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S;
-    const phase = (tSec % cyc) / cyc;
-    return 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
+function breathStopVoice() {
+    // Called from endGame — release everything gracefully.
+    if (breath.voice) { try { breath.voice.release(1.8); } catch (_) {} breath.voice = null; }
+    if (breath.harmony) { try { breath.harmony.release(1.8); } catch (_) {} breath.harmony = null; }
+    breathStopPad();
 }
 
-function breathUpdate() {
-    breath.t++;
-    const tSec = breath.t / 60;
-    breath.targetLevel = breathTargetAt(tSec);
-
-    // User level: rise when holding (slowly, ~5s to full), fall when released
-    const RISE = 1 / (5 * 60);     // full in 5s
-    const FALL = 1 / (5 * 60);
-    if (breath.holding) breath.userLevel = Math.min(1, breath.userLevel + RISE);
-    else                breath.userLevel = Math.max(0, breath.userLevel - FALL);
-
-    // Cycle counter — when target phase wraps past 1 (trough) count a cycle
-    const phase = (tSec % (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S)) / (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S);
-    if (phase < breath.lastPhase) breath.cycles++;   // wrap
-    breath.lastPhase = phase;
-
-    // Sync scoring: reward every frame the two levels are within 12%
-    const diff = Math.abs(breath.userLevel - breath.targetLevel);
-    if (diff < 0.12) {
-        breath.score += Math.round((1 - diff / 0.12) * 3);
-        breath.syncFrames++;
-    }
-
-    breathUpdateVoice();
+function _breathStartVoice(hz) {
+    const v = lalSustain({
+        freq: hz,
+        type: 'sawtooth',          // rich harmonic source; filter shapes the vowel
+        detune: 7,
+        pan: 0,
+        cutoff: 500,                // start dark, filter opens with Y
+        q: 2.8,
+        peak: 0.14,
+        attack: 0.22,
+        reverb: 0.55,
+        voices: 3,
+    });
+    return v;
 }
 
 function breathHandleTouch(x, y, dragging, vw, vh) {
-    // Pressing anywhere = holding breath in. Move = still holding.
+    vw = vw || 800; vh = vh || 400;
+    // Active ribbon area: full width, excluding a 60px top HUD band.
+    const ribbonTop = 60;
+    const ribbonBot = vh - 28;
+    const yRel = 1 - Math.max(0, Math.min(1, (y - ribbonTop) / (ribbonBot - ribbonTop)));
+    const xRel = Math.max(0, Math.min(1, x / vw));
+    breath.touchX = xRel;
+    breath.touchY = yRel;
+
+    const bucket = Math.round(xRel * (BREATH_SCALE.length - 1));
+    const hz = BREATH_SCALE[bucket];
+
+    // Double-tap detection on fresh press — toggles harmony on/off.
+    if (!dragging) {
+        const now = performance.now();
+        if (now - breath.lastTapAt < 300 && Math.abs(bucket - breath.bucket) <= 1) {
+            breath.harmonyOn = !breath.harmonyOn;
+            if (!breath.harmonyOn && breath.harmony) {
+                try { breath.harmony.release(0.6); } catch (_) {}
+                breath.harmony = null;
+            }
+        }
+        breath.lastTapAt = now;
+    }
+
+    if (!dragging) {
+        // New note attack — start or crossfade the voice.
+        if (breath.voice) try { breath.voice.release(0.35); } catch (_) {}
+        breath.voice = _breathStartVoice(hz);
+        breath.noteStartedAt = breath.t;
+        if (breath.harmonyOn) {
+            if (breath.harmony) try { breath.harmony.release(0.3); } catch (_) {}
+            breath.harmony = lalSustain({
+                freq: hz * 1.5, type: 'triangle', detune: 5, pan: 0.3,
+                cutoff: 900, q: 1.2, peak: 0.08, attack: 0.25, reverb: 0.6, voices: 2,
+            });
+        }
+        if (!breath.uniquePitches.has(bucket)) {
+            breath.uniquePitches.add(bucket);
+            breath.score += 5;
+        }
+        try { navigator.vibrate && navigator.vibrate(12); } catch (_) {}
+    } else if (bucket !== breath.bucket) {
+        // Sliding across pitches — true legato (glide the sustained voice).
+        if (breath.voice) breath.voice.setFreq(hz, 0.08);
+        if (breath.harmony) breath.harmony.setFreq(hz * 1.5, 0.08);
+        if (!breath.uniquePitches.has(bucket)) {
+            breath.uniquePitches.add(bucket);
+            breath.score += 3;
+        }
+        // Tiny haptic click on each new bucket (no-op where unsupported)
+        try { navigator.vibrate && navigator.vibrate(6); } catch (_) {}
+    }
+    breath.bucket = bucket;
     breath.holding = true;
+
+    // Live-update timbre from Y position. Cutoff sweeps from 400 Hz (dark
+    // whisper) to 4800 Hz (bright ah-vowel). Amplitude also rises slightly.
+    if (breath.voice) {
+        const cutoff = 400 + yRel * yRel * 4400;
+        breath.voice.setCutoff(cutoff, 0.05);
+        breath.voice.setGain(0.08 + yRel * 0.18, 0.05);
+        // Vibrato: deepens as you hold the same note for >1s — gives the
+        // instrument a "singing" evolution.
+        const holdSec = (breath.t - breath.noteStartedAt) / 60;
+        const vibDepth = Math.min(0.25, Math.max(0, (holdSec - 1) * 0.08)); // semitones
+        // Vibrato rate slows as the hold deepens — "slow breath".
+        const vibRate = Math.max(2.2, 5.5 - holdSec * 0.4);
+        breath.voice.setVibrato(vibDepth, vibRate);
+    }
+    if (breath.harmony) {
+        const cutoff = 500 + yRel * yRel * 3600;
+        breath.harmony.setCutoff(cutoff, 0.05);
+        breath.harmony.setGain(0.05 + yRel * 0.10, 0.05);
+    }
+
+    // Ripple at touch point
+    breath.ripples.push({ x, y, r: 6, life: 1, hue: 180 + bucket * 12 });
+    if (breath.ripples.length > 18) breath.ripples.shift();
 }
 
 function breathHandleRelease() {
     breath.holding = false;
+    if (breath.voice) {
+        try { breath.voice.release(1.8); } catch (_) {}
+        breath.voice = null;
+    }
+    if (breath.harmony) {
+        try { breath.harmony.release(1.8); } catch (_) {}
+        breath.harmony = null;
+    }
+    breath.bucket = -1;
+}
+
+function breathUpdate() {
+    breath.t++;
+    if (breath.holding) {
+        breath.holdFrames++;
+        // Score: 1 point per second held + 5 per unique pitch (awarded once)
+        if (breath.holdFrames % 60 === 0) breath.score += 1;
+        // Auto-vibrato that deepens with sustained hold — applies even when
+        // the finger is not moving.
+        if (breath.voice) {
+            const holdSec = (breath.t - breath.noteStartedAt) / 60;
+            const vibDepth = Math.min(0.25, Math.max(0, (holdSec - 1) * 0.08));
+            const vibRate = Math.max(2.2, 5.5 - holdSec * 0.4);
+            breath.voice.setVibrato(vibDepth, vibRate);
+        }
+    }
+    // Ripples expand & fade
+    for (const r of breath.ripples) {
+        r.r += 1.4; r.life -= 0.025;
+    }
+    breath.ripples = breath.ripples.filter(r => r.life > 0);
+    // Aura tracks Y brightness smoothed
+    const targetAura = breath.holding ? breath.touchY : 0;
+    breath.aura += (targetAura - breath.aura) * 0.08;
 }
 
 function renderBreath(ctx, w, h) {
+    // Deep cosmos backdrop, colour-tinted by Y (formant).
+    const aura = breath.aura;
     const bg = ctx.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, '#08102A');
-    bg.addColorStop(0.5, '#0E2848');
-    bg.addColorStop(1, '#103054');
+    bg.addColorStop(0, `rgb(${Math.round(8 + aura * 22)}, ${Math.round(16 + aura * 30)}, ${Math.round(42 + aura * 40)})`);
+    bg.addColorStop(0.5, `rgb(${Math.round(14 + aura * 32)}, ${Math.round(40 + aura * 48)}, ${Math.round(72 + aura * 40)})`);
+    bg.addColorStop(1, `rgb(${Math.round(18 + aura * 34)}, ${Math.round(48 + aura * 46)}, ${Math.round(84 + aura * 30)})`);
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, w, h);
 
-    const cx = w / 2, cy = h / 2;
-    const rMin = Math.min(w, h) * 0.10;
-    const rMax = Math.min(w, h) * 0.42;
-    const rUser   = rMin + (rMax - rMin) * breath.userLevel;
-    const rTarget = rMin + (rMax - rMin) * breath.targetLevel;
-    const inSync  = Math.abs(breath.userLevel - breath.targetLevel) < 0.12;
+    const ribbonTop = 60;
+    const ribbonBot = h - 28;
+    const ribbonH = ribbonBot - ribbonTop;
 
-    // Target ring (dotted outline)
-    ctx.save();
-    ctx.strokeStyle = inSync ? '#9FE6B4' : '#7FAEDC';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath(); ctx.arc(cx, cy, rTarget, 0, Math.PI * 2); ctx.stroke();
-    ctx.restore();
-
-    // User ring (solid, filled soft)
-    const fill = inSync ? 'rgba(180,240,200,0.45)' : 'rgba(160,210,245,0.35)';
-    ctx.fillStyle = fill;
-    ctx.beginPath(); ctx.arc(cx, cy, rUser, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = breath.holding ? '#FFFFFF' : 'rgba(230,245,255,0.7)';
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(cx, cy, rUser, 0, Math.PI * 2); ctx.stroke();
-
-    // Center guide
-    ctx.fillStyle = 'rgba(240,248,255,0.9)';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.textAlign = 'center';
-    const phase = (breath.t / 60) % (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S);
-    const inhale = phase < BREATH_TARGET_IN_S;
-    const secLeft = Math.ceil(inhale ? (BREATH_TARGET_IN_S - phase) : (BREATH_TARGET_IN_S + BREATH_TARGET_OUT_S - phase));
-    ctx.fillText(inhale ? `inspira · ${secLeft}s` : `espira · ${secLeft}s`, cx, cy - 4);
-
-    // Sub-instruction
-    ctx.fillStyle = 'rgba(200,220,245,0.75)';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(inhale ? 'tieni premuto per espandere' : 'rilascia per contrarre', cx, cy + 16);
-
-    // Bottom hint
-    ctx.fillStyle = 'rgba(200,220,245,0.55)';
+    // Title strip
+    ctx.fillStyle = '#D4A534';
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('VITH-ONDI', 18, 24);
+    ctx.fillStyle = 'rgba(220,235,255,0.6)';
     ctx.font = '11px sans-serif';
-    ctx.fillText('segui il cerchio tratteggiato · respira con lui', cx, h - 18);
+    ctx.fillText(breath.harmonyOn ? 'canto del respiro · armonia attiva' : 'canto del respiro · tocco singolo', 18, 40);
 
-    // Progress + sync meter
+    // Right-side readout
     const remain = Math.max(0, 1 - breath.t / BREATH_DURATION_TICKS);
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '12px monospace';
+    const secHeld = Math.floor(breath.holdFrames / 60);
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.font = '11px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`${Math.ceil(remain * 90)}s · ${breath.cycles} cicli · sync ${Math.round(breath.syncFrames / Math.max(1, breath.t) * 100)}%`, w - 16, 22);
+    ctx.fillText(`${Math.ceil(remain * 90)}s · ${secHeld}s · ${breath.uniquePitches.size}/${BREATH_SCALE.length}`, w - 16, 24);
 
-    // Sync pulse in corner
-    if (inSync) {
-        ctx.fillStyle = '#9FE6B4';
-        ctx.fillRect(w - 16, 28, 6, 6);
+    // Scale grid — vertical ticks for each scale degree. Octave boundary
+    // (index 5 = C4) gets a brighter line.
+    for (let i = 0; i < BREATH_SCALE.length; i++) {
+        const x = (i / (BREATH_SCALE.length - 1)) * w;
+        const isRoot = (i === 0 || i === 5 || i === 10);
+        ctx.strokeStyle = isRoot
+            ? 'rgba(212,165,52,0.35)'
+            : 'rgba(255,255,255,0.09)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, ribbonTop);
+        ctx.lineTo(x, ribbonBot);
+        ctx.stroke();
+        // Label every other degree
+        if (i % 2 === 0) {
+            ctx.fillStyle = isRoot ? 'rgba(255,232,153,0.55)' : 'rgba(220,235,255,0.28)';
+            ctx.font = '9px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(BREATH_NOTE_NAMES[i], Math.max(12, Math.min(w - 12, x)), ribbonBot + 12);
+        }
+    }
+    // Horizontal breath-axis reference lines
+    for (let i = 1; i < 4; i++) {
+        const y = ribbonTop + (ribbonH * i / 4);
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    // Ripples
+    for (const r of breath.ripples) {
+        ctx.globalAlpha = r.life * 0.5;
+        ctx.strokeStyle = `hsl(${r.hue},70%,80%)`;
+        ctx.lineWidth = 2 * r.life;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Active cursor: a glowing circle at touchX, touchY with a vertical
+    // "column of breath" extending upward — represents the voice.
+    if (breath.holding) {
+        const cx = breath.touchX * w;
+        const cy = ribbonTop + (1 - breath.touchY) * ribbonH;
+        const hue = 180 + breath.bucket * 12;
+        // Vertical breath column
+        const colGrad = ctx.createLinearGradient(cx, ribbonTop, cx, ribbonBot);
+        colGrad.addColorStop(0, `hsla(${hue},85%,75%,0)`);
+        colGrad.addColorStop(0.5, `hsla(${hue},85%,70%,${0.22 + breath.touchY * 0.22})`);
+        colGrad.addColorStop(1, `hsla(${hue},85%,65%,${0.05})`);
+        ctx.fillStyle = colGrad;
+        ctx.fillRect(cx - 28, ribbonTop, 56, ribbonH);
+
+        // Cursor halo
+        const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, 60);
+        glow.addColorStop(0, `hsla(${hue},90%,85%,0.85)`);
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(cx, cy, 60, 0, Math.PI * 2); ctx.fill();
+        // Core dot
+        ctx.fillStyle = `hsl(${hue},80%,92%)`;
+        ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill();
+
+        // Note label near cursor
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = 'bold 12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(BREATH_NOTE_NAMES[breath.bucket] || '', cx, Math.max(ribbonTop + 14, cy - 18));
+    }
+
+    // Labels on the sides (bright ↑ / dark ↓)
+    ctx.fillStyle = 'rgba(220,235,255,0.35)';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('↑ chiaro · bocca aperta', 12, ribbonTop + 16);
+    ctx.fillText('↓ scuro · sussurro', 12, ribbonBot - 10);
+
+    // Bottom hint on first use
+    if (!breath.holding && breath.t < 240) {
+        ctx.fillStyle = 'rgba(212,165,52,0.85)';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Tocca e trascina · orizzontale = nota · verticale = timbro · doppio tap = armonia in quinta',
+            w / 2, ribbonTop + ribbonH * 0.5);
     }
 }
 
 // ---------------------------------------------------------------------------
-// THI-SING — two-axis theremin. X = pitch bucket (7 pentatonic notes),
-// Y = tone brightness (filter/osc mix). Finger drag shapes a continuous
-// melody over a slow chord pad. Pure improvisation, no fail.
+// THI-SING — two-axis theremin / poly-voice improvisation surface.
+//
+// Upgraded from a simple sine-bucket toy to a real filter-synth playground:
+//   • X continuous -> pitch. Two modes: "quantised" (snaps to scale) and
+//     "free" (true theremin glide). Tap the mode chip top-left to toggle.
+//   • Y -> filter cutoff (top bright, bottom dark) + breath volume.
+//   • A second "ghost" voice a fifth above can be toggled ON — chorus-like.
+//   • Rich sawtooth source through a resonant low-pass. The filter tracks
+//     Y continuously, with a little auto-wah the longer you hold.
+//   • A 4-bar chord progression cycles underneath (Cm → Gm → Ab → Bb).
 // ---------------------------------------------------------------------------
 const THI_DURATION_TICKS = 80 * 60;
-const THI_SCALE = [261.63, 311.13, 349.23, 392.00, 466.16, 523.25, 622.25];  // C minor blues-ish for pads
-const THI_CHORDS = [
-    [130.81, 155.56, 196.00],   // C minor
-    [138.59, 164.81, 207.65],   // C# dim / pad
-    [155.56, 185.00, 233.08],   // Eb min
-    [146.83, 174.61, 220.00],   // D min
+// C minor pentatonic across 2+ octaves — wide enough for proper melodies.
+const THI_SCALE = [
+    130.81, 155.56, 174.61, 196.00, 233.08,
+    261.63, 311.13, 349.23, 392.00, 466.16,
+    523.25, 622.25, 698.46,
 ];
+const THI_NOTE_NAMES = ['C3','Eb3','F3','G3','Bb3','C4','Eb4','F4','G4','Bb4','C5','Eb5','F5'];
+const THI_CHORDS = [
+    [65.4, 77.78, 98.0,  155.56],   // Cm add9
+    [49.0, 73.42, 98.0,  146.83],   // Gm
+    [51.91, 77.78, 103.83, 155.56], // Ab
+    [58.27, 87.31, 116.54, 174.61], // Bb
+];
+const THI_CHORD_NAMES = ['Do minore', 'Sol minore', 'La♭ maggiore', 'Si♭ maggiore'];
+
 let thi = {
     t: 0,
     notes: 0,
-    trail: [],          // recent touch points for a comet trail
+    trail: [],
     lastBucket: -1,
     currentChord: 0,
-    voice: null,        // sustained osc while finger held
+    voice: null,            // primary lalSustain instance
+    harmonyVoice: null,     // optional fifth-above
+    harmonyOn: false,
+    quantised: true,         // false = continuous glide (theremin)
+    touchX: 0.5, touchY: 0.5,
+    noteStartedAt: 0,
+    _toggleRects: [],
 };
-
-function thiInit() {
-    thi.t = 0; thi.notes = 0; thi.trail = []; thi.lastBucket = -1; thi.currentChord = 0;
-    thi.voice = null;
-    // Slow chord pad: changes every 16s
-    _thiPad = null;
-    thiPadCycle();
-}
 
 let _thiPad = null;
 function thiPadCycle() {
@@ -1226,7 +1689,6 @@ function thiPadCycle() {
     if (!ctx) return;
     const chord = THI_CHORDS[thi.currentChord];
     const t = ctx.currentTime;
-    // Fade out previous
     if (_thiPad) {
         const old = _thiPad;
         _thiPad.gain.gain.cancelScheduledValues(t);
@@ -1236,17 +1698,34 @@ function thiPadCycle() {
     }
     _thiPad = { osc: [], gain: ctx.createGain() };
     _thiPad.gain.gain.setValueAtTime(0.0001, t);
-    _thiPad.gain.gain.exponentialRampToValueAtTime(0.07, t + 3);
+    _thiPad.gain.gain.linearRampToValueAtTime(0.09, t + 4);
     _thiPad.gain.connect(_ambMaster);
+    // Lush voicing: 2 detuned oscillators per chord tone.
     for (const hz of chord) {
-        const o = ctx.createOscillator();
-        o.type = 'sine';
-        o.frequency.value = hz;
-        o.detune.value = (Math.random() - 0.5) * 8;
-        o.connect(_thiPad.gain);
-        o.start(t);
-        _thiPad.osc.push(o);
+        for (const det of [-7, +7]) {
+            const o = ctx.createOscillator();
+            o.type = 'triangle';
+            o.frequency.value = hz;
+            o.detune.value = det;
+            const g = ctx.createGain();
+            g.gain.value = 0.36;
+            o.connect(g).connect(_thiPad.gain);
+            o.start(t);
+            _thiPad.osc.push(o);
+        }
     }
+    _sendReverb(_thiPad.gain, 0.55);
+}
+
+function thiInit() {
+    thi.t = 0; thi.notes = 0; thi.trail = [];
+    thi.lastBucket = -1; thi.currentChord = 0;
+    thi.voice = null; thi.harmonyVoice = null;
+    thi.harmonyOn = false; thi.quantised = true;
+    thi.touchX = 0.5; thi.touchY = 0.5;
+    thi.noteStartedAt = 0;
+    _thiPad = null;
+    thiPadCycle();
 }
 
 function thiUpdate() {
@@ -1256,72 +1735,122 @@ function thiUpdate() {
         thi.currentChord = (thi.currentChord + 1) % THI_CHORDS.length;
         thiPadCycle();
     }
-    // Decay trail
     thi.trail = thi.trail.filter(p => p.life > 0);
-    for (const p of thi.trail) p.life -= 0.02;
+    for (const p of thi.trail) p.life -= 0.018;
+
+    // Auto-wah: if the user has been holding the same note for >1s, slowly
+    // open the filter a bit extra — gives sustained notes a singing quality.
+    if (thi.voice) {
+        const holdSec = (thi.t - thi.noteStartedAt) / 60;
+        const extra = Math.min(1, Math.max(0, (holdSec - 1) * 0.25));
+        const cutoff = 400 + thi.touchY * thi.touchY * 5200 + extra * 1200;
+        thi.voice.setCutoff(cutoff, 0.08);
+        // Vibrato ramps in after ~1.5s
+        const vib = Math.min(0.2, Math.max(0, (holdSec - 1.5) * 0.06));
+        thi.voice.setVibrato(vib, 5.6);
+        if (thi.harmonyVoice) thi.harmonyVoice.setCutoff(cutoff * 0.9, 0.08);
+    }
 }
 
-function thiStartVoice() {
-    const ctx = ensureAmbAwake();
-    if (!ctx || thi.voice) return;
-    const t = ctx.currentTime;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-    gain.connect(_ambMaster);
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = THI_SCALE[3];
-    osc.connect(gain);
-    osc.start(t);
-    const vib = ctx.createOscillator();
-    const vibG = ctx.createGain();
-    vib.frequency.value = 5;
-    vibG.gain.value = 2;
-    vib.connect(vibG).connect(osc.frequency);
-    vib.start(t);
-    thi.voice = { osc, gain, vib };
+function _thiHzFromX(xRel) {
+    if (thi.quantised) {
+        const bucket = Math.max(0, Math.min(THI_SCALE.length - 1, Math.round(xRel * (THI_SCALE.length - 1))));
+        return { hz: THI_SCALE[bucket], bucket };
+    }
+    // Continuous mode: logarithmic glide from C3 to F5
+    const low = Math.log2(THI_SCALE[0]);
+    const high = Math.log2(THI_SCALE[THI_SCALE.length - 1]);
+    const hz = Math.pow(2, low + (high - low) * xRel);
+    // Find nearest bucket just for visual feedback
+    let bucket = 0, best = Infinity;
+    for (let i = 0; i < THI_SCALE.length; i++) {
+        const d = Math.abs(Math.log2(THI_SCALE[i]) - Math.log2(hz));
+        if (d < best) { best = d; bucket = i; }
+    }
+    return { hz, bucket };
+}
+
+function thiStartVoice(hz) {
+    if (thi.voice) try { thi.voice.release(0.3); } catch (_) {}
+    thi.voice = lalSustain({
+        freq: hz, type: 'sawtooth', detune: 9, pan: 0,
+        cutoff: 1200, q: 3.2, peak: 0.14, attack: 0.08, reverb: 0.45, voices: 3,
+    });
+    thi.noteStartedAt = thi.t;
+    if (thi.harmonyOn) {
+        if (thi.harmonyVoice) try { thi.harmonyVoice.release(0.3); } catch (_) {}
+        thi.harmonyVoice = lalSustain({
+            freq: hz * 1.5, type: 'triangle', detune: 5, pan: 0.35,
+            cutoff: 900, q: 1.4, peak: 0.07, attack: 0.12, reverb: 0.5, voices: 2,
+        });
+    }
 }
 
 function thiStopVoice() {
-    if (!thi.voice || !_ambCtx) return;
-    const t = _ambCtx.currentTime;
-    const v = thi.voice;
-    thi.voice = null;
-    v.gain.gain.cancelScheduledValues(t);
-    v.gain.gain.setValueAtTime(v.gain.gain.value, t);
-    v.gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-    setTimeout(() => { try { v.osc.stop(); v.vib.stop(); } catch (_) {} }, 600);
+    if (thi.voice) { try { thi.voice.release(0.6); } catch (_) {} thi.voice = null; }
+    if (thi.harmonyVoice) { try { thi.harmonyVoice.release(0.6); } catch (_) {} thi.harmonyVoice = null; }
+}
+
+// Hit-test the small mode chips near the top of the canvas.
+function _thiHitToggle(x, y) {
+    for (const r of thi._toggleRects) {
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return r.kind;
+    }
+    return null;
 }
 
 function thiHandleTouch(x, y, dragging, vw, vh) {
     vw = vw || 800; vh = vh || 400;
-    const bucket = Math.max(0, Math.min(THI_SCALE.length - 1, Math.floor(x / vw * THI_SCALE.length)));
-    const brightness = Math.max(0, Math.min(1, 1 - y / vh));
+    if (!dragging) {
+        const toggle = _thiHitToggle(x, y);
+        if (toggle === 'mode') {
+            thi.quantised = !thi.quantised;
+            return;
+        }
+        if (toggle === 'harmony') {
+            thi.harmonyOn = !thi.harmonyOn;
+            if (!thi.harmonyOn && thi.harmonyVoice) {
+                try { thi.harmonyVoice.release(0.5); } catch (_) {}
+                thi.harmonyVoice = null;
+            } else if (thi.harmonyOn && thi.voice) {
+                const xRel = Math.max(0, Math.min(1, x / vw));
+                const { hz } = _thiHzFromX(xRel);
+                thi.harmonyVoice = lalSustain({
+                    freq: hz * 1.5, type: 'triangle', detune: 5, pan: 0.35,
+                    cutoff: 900, q: 1.4, peak: 0.07, attack: 0.3, reverb: 0.5, voices: 2,
+                });
+            }
+            return;
+        }
+    }
+
+    const topBand = 46;
+    if (y < topBand) return;   // ignore touches in the header
+    const xRel = Math.max(0, Math.min(1, x / vw));
+    const yRel = Math.max(0, Math.min(1, 1 - (y - topBand) / (vh - topBand)));
+    thi.touchX = xRel; thi.touchY = yRel;
+    const { hz, bucket } = _thiHzFromX(xRel);
 
     if (!dragging) {
-        // New touch → start voice, count a note
-        thiStartVoice();
+        thiStartVoice(hz);
         thi.notes++;
+        try { navigator.vibrate && navigator.vibrate(10); } catch (_) {}
+    } else if (thi.voice) {
+        // Glide: in quantised mode, step the pitch cleanly (40 ms ramp);
+        // in free mode, ramp quickly (15 ms) for fluid theremin motion.
+        const glide = thi.quantised ? 0.06 : 0.02;
+        thi.voice.setFreq(hz, glide);
+        if (thi.harmonyVoice) thi.harmonyVoice.setFreq(hz * 1.5, glide);
+        if (thi.quantised && bucket !== thi.lastBucket) thi.notes++;
     }
-    if (!thi.voice) return;
 
-    const ctx = ambCtx();
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const hz = THI_SCALE[bucket];
-    thi.voice.osc.frequency.linearRampToValueAtTime(hz, t + 0.04);
-    const target = 0.06 + brightness * 0.14;
-    thi.voice.gain.gain.cancelScheduledValues(t);
-    thi.voice.gain.gain.setValueAtTime(thi.voice.gain.gain.value, t);
-    thi.voice.gain.gain.linearRampToValueAtTime(target, t + 0.06);
-    // Change oscillator type based on brightness: sine → triangle → sawtooth
-    thi.voice.osc.type = brightness < 0.33 ? 'sine' : brightness < 0.66 ? 'triangle' : 'sawtooth';
+    // Live gain from Y
+    if (thi.voice) thi.voice.setGain(0.06 + yRel * 0.16, 0.05);
+    if (thi.harmonyVoice) thi.harmonyVoice.setGain(0.04 + yRel * 0.10, 0.05);
 
-    // Trail
-    thi.trail.push({ x, y, hue: 180 + bucket * 25, life: 1 });
-    if (thi.trail.length > 40) thi.trail.shift();
-    if (bucket !== thi.lastBucket && dragging) thi.notes++;
+    // Comet trail
+    thi.trail.push({ x, y, hue: 180 + bucket * 14, life: 1 });
+    if (thi.trail.length > 60) thi.trail.shift();
     thi.lastBucket = bucket;
 }
 
@@ -1331,64 +1860,103 @@ function thiHandleRelease() {
 }
 
 function renderThi(ctx, w, h) {
-    // Starry twilight
     const bg = ctx.createLinearGradient(0, 0, 0, h);
     bg.addColorStop(0, '#0A0F20');
     bg.addColorStop(1, '#182840');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, w, h);
 
-    // Pentatonic pitch lanes (subtle vertical bands)
+    // Top mode chips
+    const chipW = 108, chipH = 22, chipY = 14;
+    const chips = [
+        { kind: 'mode', label: thi.quantised ? '● scala' : '○ libero', active: !thi.quantised },
+        { kind: 'harmony', label: thi.harmonyOn ? '● quinta' : '○ quinta', active: thi.harmonyOn },
+    ];
+    thi._toggleRects = [];
+    let cx = 14;
+    for (const c of chips) {
+        ctx.fillStyle = c.active ? 'rgba(212,165,52,0.22)' : 'rgba(255,255,255,0.05)';
+        ctx.fillRect(cx, chipY, chipW, chipH);
+        ctx.strokeStyle = c.active ? 'rgba(255,232,153,0.85)' : 'rgba(212,165,52,0.35)';
+        ctx.lineWidth = c.active ? 1.5 : 1;
+        ctx.strokeRect(cx + 0.5, chipY + 0.5, chipW - 1, chipH - 1);
+        ctx.fillStyle = c.active ? '#FFE899' : 'rgba(255,232,176,0.85)';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(c.label, cx + chipW / 2, chipY + chipH / 2);
+        thi._toggleRects.push({ kind: c.kind, x: cx, y: chipY, w: chipW, h: chipH });
+        cx += chipW + 6;
+    }
+    ctx.textBaseline = 'alphabetic';
+
+    const topBand = 46;
+
+    // Scale lanes
     for (let i = 0; i < THI_SCALE.length; i++) {
-        const x = (i + 0.5) * w / THI_SCALE.length;
-        ctx.strokeStyle = `hsla(${180 + i * 25},50%,60%,0.15)`;
+        const x = (i / (THI_SCALE.length - 1)) * w;
+        const isRoot = (THI_NOTE_NAMES[i] || '').startsWith('C');
+        ctx.strokeStyle = isRoot
+            ? 'rgba(212,165,52,0.25)'
+            : `hsla(${180 + i * 14},50%,60%,0.10)`;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(x, 30);
-        ctx.lineTo(x, h - 20);
+        ctx.moveTo(x, topBand);
+        ctx.lineTo(x, h - 18);
         ctx.stroke();
-        // Note label at bottom
-        ctx.fillStyle = `hsla(${180 + i * 25},70%,75%,0.4)`;
-        ctx.font = '10px monospace';
-        ctx.textAlign = 'center';
-        const names = ['C','Eb','F','G','Bb','C2','Eb2'];
-        ctx.fillText(names[i], x, h - 6);
+        if (i % 2 === 0) {
+            ctx.fillStyle = isRoot ? 'rgba(255,232,153,0.55)' : `hsla(${180 + i * 14},70%,75%,0.35)`;
+            ctx.font = '9px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(THI_NOTE_NAMES[i], Math.max(10, Math.min(w - 10, x)), h - 6);
+        }
     }
-
-    // Brightness-Y reference (top = bright, bottom = soft)
-    ctx.fillStyle = 'rgba(200,220,245,0.45)';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('↑ luminoso · sotto morbido →', 12, 18);
 
     // Trail
     for (const p of thi.trail) {
         ctx.globalAlpha = p.life * 0.75;
         ctx.fillStyle = `hsl(${p.hue},80%,70%)`;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 * p.life, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 3 + 4 * p.life, 0, Math.PI * 2);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
 
-    // Chord name top-right
-    const chordNames = ['Do minore', 'Do# dim', 'Mi♭ min', 'Re min'];
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    // Chord pad name & readout
+    const remain = Math.max(0, 1 - thi.t / THI_DURATION_TICKS);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.font = '11px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`pad: ${chordNames[thi.currentChord]}`, w - 16, 18);
-
-    // Progress
-    const remain = Math.max(0, 1 - thi.t / THI_DURATION_TICKS);
+    ctx.fillText(`pad: ${THI_CHORD_NAMES[thi.currentChord]}`, w - 16, 26);
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText(`${Math.ceil(remain * 80)}s · ${thi.notes} note`, w - 16, 34);
+    ctx.fillText(`${Math.ceil(remain * 80)}s · ${thi.notes} note`, w - 16, 40);
+
+    // Y-axis hint
+    ctx.fillStyle = 'rgba(200,220,245,0.35)';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('↑ luminoso · ↓ morbido', 14, h - 8);
+
+    // Active cursor
+    if (thi.voice) {
+        const px = thi.touchX * w;
+        const py = topBand + (1 - thi.touchY) * (h - 18 - topBand);
+        const hue = 180 + (thi.lastBucket >= 0 ? thi.lastBucket * 14 : 0);
+        const glow = ctx.createRadialGradient(px, py, 2, px, py, 50);
+        glow.addColorStop(0, `hsla(${hue},90%,85%,0.9)`);
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(px, py, 50, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `hsl(${hue},80%,92%)`;
+        ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+    }
 
     // Hint when idle
-    if (!thi.voice && thi.t < 180) {
+    if (!thi.voice && thi.t < 220) {
         ctx.fillStyle = 'rgba(212,165,52,0.85)';
-        ctx.font = 'bold 14px sans-serif';
+        ctx.font = 'bold 13px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Trascina il dito: orizzontale = tono, verticale = timbro', w / 2, h / 2);
+        ctx.fillText('Trascina il dito · X=tono · Y=timbro · prova "libero" per il theremin', w / 2, h / 2);
     }
 }
 
@@ -1483,6 +2051,8 @@ function shalimStartChord(padIdx) {
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(peakGain, t + attack);
     gain.connect(_ambMaster);
+    // Generous reverb send — gives the chord a hall-like sustain tail.
+    _sendReverb(gain, 0.45 + shalim.brightness * 0.15);
 
     // Warm low-pass for the whole chord
     const lp = ctx.createBiquadFilter();
@@ -1588,6 +2158,7 @@ function shalimArpNote(hz) {
     g.gain.exponentialRampToValueAtTime(0.17, t + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
     g.connect(_ambMaster);
+    _sendReverb(g, 0.4);
     const o = ctx.createOscillator();
     o.type = bright ? 'sawtooth' : 'triangle';
     o.frequency.value = hz;
@@ -1883,52 +2454,99 @@ function renderShalim(ctx, w, h) {
 // Tap a cell to toggle it; the grid plays in a loop at 90 BPM. 75s total.
 // Score = unique cells activated (encourages composition).
 // ---------------------------------------------------------------------------
-const VYTHI_STEPS = 8;
+const VYTHI_STEPS = 16;           // was 8 — give the keeper a full loop
 const VYTHI_TRACKS = 3;
-const VYTHI_BPM = 90;
+const VYTHI_BPM = 96;
 const VYTHI_STEP_SEC = 60 / VYTHI_BPM / 2;   // 8th notes
-const VYTHI_DURATION_TICKS = 75 * 60;
+const VYTHI_DURATION_TICKS = 90 * 60;
+// Pitches per melodic track (C minor pentatonic). Each cell holds a value
+// 0..3 (4 pitch levels) when on; null = off. Track 0 is drums (no pitch).
+const VYTHI_KICK_PITCHES = [1];
+const VYTHI_CHIME_PITCHES = [523.25, 622.25, 698.46, 784.00];   // C5 Eb5 F5 G5
+const VYTHI_BELL_PITCHES  = [1046.5, 1244.5, 1396.9, 1567.98];  // C6 Eb6 F6 G6
 let vythi = {
     t: 0,
+    // grid[track][step] = null (off) | { pitch: 0..3, accent: bool }
     grid: null,
     step: 0,
     stepTimer: 0,
     uniqueToggles: 0,
+    swing: 0.18,           // 0..0.45 — delays odd 8ths for shuffle feel
+    swingOn: true,
+    _toggleRects: [],
 };
 
 function vythiInit() {
     vythi.t = 0; vythi.step = 0; vythi.stepTimer = 0; vythi.uniqueToggles = 0;
-    vythi.grid = Array.from({ length: VYTHI_TRACKS }, () => new Array(VYTHI_STEPS).fill(false));
+    vythi.swingOn = true;
+    vythi.grid = Array.from({ length: VYTHI_TRACKS }, () => new Array(VYTHI_STEPS).fill(null));
+    // A tiny default seed so first-time users hear a pulse the moment they
+    // enter — kick on 1/5/9/13, no melody.
+    for (let i = 0; i < VYTHI_STEPS; i += 4) vythi.grid[0][i] = { pitch: 0, accent: i === 0 };
     ambStartPad(98);  // G2 pad
+}
+
+function _vythiPlayCell(track, step, cell, when) {
+    const ctx = _ambCtx;
+    if (!ctx || !cell) return;
+    const t = when;
+    const accentMul = cell.accent ? 1.35 : 1;
+    if (track === 0) {
+        // Kick — sine thump with pitch drop + short noise click.
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(140, t);
+        o.frequency.exponentialRampToValueAtTime(42, t + 0.18);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.34 * accentMul, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+        o.connect(g).connect(_ambMaster);
+        o.start(t); o.stop(t + 0.3);
+        // Click layer
+        const click = ctx.createOscillator();
+        const cg = ctx.createGain();
+        click.type = 'triangle';
+        click.frequency.setValueAtTime(1800, t);
+        click.frequency.exponentialRampToValueAtTime(180, t + 0.02);
+        cg.gain.setValueAtTime(0.0001, t);
+        cg.gain.linearRampToValueAtTime(0.10 * accentMul, t + 0.002);
+        cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+        click.connect(cg).connect(_ambMaster);
+        click.start(t); click.stop(t + 0.04);
+        _sendReverb(g, 0.1);
+    } else if (track === 1) {
+        // Chime — warmer pluck through lalPluck
+        const hz = VYTHI_CHIME_PITCHES[cell.pitch % VYTHI_CHIME_PITCHES.length];
+        // Schedule relative to 'when' by computing offset from currentTime.
+        // lalPluck uses currentTime internally, so call it with a setTimeout
+        // for off-grid precision. For 8th-note grid this is fine.
+        const delay = Math.max(0, (when - ctx.currentTime) * 1000);
+        setTimeout(() => lalPluck(hz, {
+            dur: 1.1, velocity: accentMul > 1 ? 0.85 : 0.55,
+            type: 'triangle', peak: 0.18, pan: -0.25, reverb: 0.45,
+        }), delay);
+    } else {
+        // Bell — crystalline high sine + shimmer
+        const hz = VYTHI_BELL_PITCHES[cell.pitch % VYTHI_BELL_PITCHES.length];
+        const delay = Math.max(0, (when - ctx.currentTime) * 1000);
+        setTimeout(() => lalPluck(hz, {
+            dur: 1.6, velocity: accentMul > 1 ? 0.8 : 0.5,
+            type: 'sine', peak: 0.14, pan: 0.35, reverb: 0.6,
+        }), delay);
+    }
 }
 
 function vythiPlayStep() {
     const ctx = ensureAmbAwake();
     if (!ctx) return;
+    // Swing: delay every second 8th note by swing * half-step
     const t = ctx.currentTime;
+    const swing = vythi.swingOn && (vythi.step % 2 === 1) ? VYTHI_STEP_SEC * vythi.swing : 0;
+    const when = t + swing;
     for (let tr = 0; tr < VYTHI_TRACKS; tr++) {
-        if (!vythi.grid[tr][vythi.step]) continue;
-        if (tr === 0) {
-            // Kick — sine thump with pitch drop
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(120, t);
-            o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
-            g.gain.setValueAtTime(0.0001, t);
-            g.gain.exponentialRampToValueAtTime(0.3, t + 0.005);
-            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-            o.connect(g).connect(_ambMaster);
-            o.start(t); o.stop(t + 0.25);
-        } else if (tr === 1) {
-            // Chime — FM blip in pentatonic C
-            const hz = [523.25, 587.33, 659.25, 784.00][vythi.step % 4];
-            ambPluck(hz, 0.8, 'triangle', 0.14);
-        } else {
-            // Bell — high crystalline sine
-            const hz = [1046.5, 1318.5, 1567.98, 1760.0][vythi.step % 4];
-            ambPluck(hz, 1.2, 'sine', 0.10);
-        }
+        const cell = vythi.grid[tr][vythi.step];
+        if (cell) _vythiPlayCell(tr, vythi.step, cell, when);
     }
 }
 
@@ -1942,25 +2560,63 @@ function vythiUpdate() {
     }
 }
 
+// Hit-test top toggle chips.
+function _vythiHitToggle(x, y) {
+    for (const r of vythi._toggleRects) {
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return r.kind;
+    }
+    return null;
+}
+
 function vythiHandleTouch(x, y, dragging, vw, vh) {
     if (dragging) return;
     vw = vw || 800; vh = vh || 400;
+    ensureAmbAwake();
+    // Toggles
+    const tog = _vythiHitToggle(x, y);
+    if (tog === 'swing') { vythi.swingOn = !vythi.swingOn; return; }
+    if (tog === 'clear') {
+        vythi.grid = Array.from({ length: VYTHI_TRACKS }, () => new Array(VYTHI_STEPS).fill(null));
+        return;
+    }
+
     const marginX = 30;
     const gridW = vw - marginX * 2;
-    const marginY = 80;
-    const gridH = vh * 0.55;
+    const marginY = 72;
+    const gridH = vh * 0.60;
     if (y < marginY || y > marginY + gridH) return;
     if (x < marginX || x > marginX + gridW) return;
     const col = Math.min(VYTHI_STEPS - 1, Math.floor((x - marginX) / (gridW / VYTHI_STEPS)));
     const row = Math.min(VYTHI_TRACKS - 1, Math.floor((y - marginY) / (gridH / VYTHI_TRACKS)));
-    const was = vythi.grid[row][col];
-    vythi.grid[row][col] = !was;
-    if (!was) vythi.uniqueToggles++;
-    // Audition the cell immediately
-    const saved = vythi.step;
-    vythi.step = col;
-    if (vythi.grid[row][col]) vythiPlayStep();
-    vythi.step = saved;
+    const cell = vythi.grid[row][col];
+    if (!cell) {
+        // Turn on — for melodic tracks pick pitch from vertical Y within the
+        // track lane (top = highest of 4 pitches). For kick, pitch is ignored.
+        const trackTop = marginY + row * (gridH / VYTHI_TRACKS);
+        const yRel = (y - trackTop) / (gridH / VYTHI_TRACKS);   // 0..1 (top..bot)
+        const pitch = row === 0 ? 0 : Math.max(0, Math.min(3, 3 - Math.floor(yRel * 4)));
+        vythi.grid[row][col] = { pitch, accent: false };
+        vythi.uniqueToggles++;
+        // Audition the cell at its computed pitch
+        _vythiPlayCell(row, col, vythi.grid[row][col], _ambCtx.currentTime);
+        try { navigator.vibrate && navigator.vibrate(8); } catch (_) {}
+    } else if (row > 0) {
+        // Second+ tap on melodic cells cycles pitch. After the 4th it toggles
+        // accent. After accent, it clears.
+        if (!cell.accent && cell.pitch < 3) {
+            cell.pitch++;
+            _vythiPlayCell(row, col, cell, _ambCtx.currentTime);
+        } else if (!cell.accent) {
+            cell.accent = true;
+            _vythiPlayCell(row, col, cell, _ambCtx.currentTime);
+        } else {
+            vythi.grid[row][col] = null;
+        }
+    } else {
+        // Kick: second tap toggles accent, third tap clears.
+        if (!cell.accent) { cell.accent = true; _vythiPlayCell(row, col, cell, _ambCtx.currentTime); }
+        else vythi.grid[row][col] = null;
+    }
 }
 
 function renderVythi(ctx, w, h) {
@@ -1970,63 +2626,114 @@ function renderVythi(ctx, w, h) {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, w, h);
 
-    // Title
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Pulsi di Luce — 90 BPM', w / 2, 30);
+    // Header
+    ctx.fillStyle = '#D4A534';
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`VYTHI-PULSE · ${VYTHI_BPM} BPM${vythi.swingOn ? ' · shuffle' : ''}`, 18, 24);
+    ctx.fillStyle = 'rgba(220,235,255,0.55)';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('tocca per accendere · re-tocca per cambiare altezza · ancora per accento · poi spegne', 18, 40);
 
-    // Track labels
+    // Top-right toggles
+    vythi._toggleRects = [];
+    const chips = [
+        { kind: 'swing', label: vythi.swingOn ? '● shuffle' : '○ shuffle', active: vythi.swingOn },
+        { kind: 'clear', label: 'svuota', active: false },
+    ];
+    let cx = w - 14;
+    for (const c of chips) {
+        const cw = 78, ch = 20;
+        cx -= cw + 6;
+        ctx.fillStyle = c.active ? 'rgba(212,165,52,0.22)' : 'rgba(255,255,255,0.05)';
+        ctx.fillRect(cx, 14, cw, ch);
+        ctx.strokeStyle = c.active ? 'rgba(255,232,153,0.85)' : 'rgba(212,165,52,0.35)';
+        ctx.lineWidth = c.active ? 1.5 : 1;
+        ctx.strokeRect(cx + 0.5, 14.5, cw - 1, ch - 1);
+        ctx.fillStyle = c.active ? '#FFE899' : 'rgba(255,232,176,0.85)';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(c.label, cx + cw / 2, 24);
+        vythi._toggleRects.push({ kind: c.kind, x: cx, y: 14, w: cw, h: ch });
+    }
+    ctx.textBaseline = 'alphabetic';
+
     const labels = ['kick', 'chime', 'bell'];
     const marginX = 30;
     const gridW = w - marginX * 2;
-    const marginY = 80;
-    const gridH = h * 0.55;
+    const marginY = 72;
+    const gridH = h * 0.60;
     const stepW = gridW / VYTHI_STEPS;
     const trackH = gridH / VYTHI_TRACKS;
 
+    // Track labels
     for (let tr = 0; tr < VYTHI_TRACKS; tr++) {
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.font = '11px sans-serif';
+        ctx.font = '10px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(labels[tr], marginX - 6, marginY + tr * trackH + trackH / 2 + 4);
+        ctx.fillText(labels[tr], marginX - 6, marginY + tr * trackH + trackH / 2 + 3);
+    }
+
+    // Vertical beat-group dividers (every 4 steps)
+    for (let g = 0; g <= VYTHI_STEPS; g += 4) {
+        ctx.strokeStyle = g % 8 === 0 ? 'rgba(212,165,52,0.25)' : 'rgba(255,255,255,0.07)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(marginX + g * stepW, marginY - 2);
+        ctx.lineTo(marginX + g * stepW, marginY + gridH + 2);
+        ctx.stroke();
     }
 
     // Cells
     for (let tr = 0; tr < VYTHI_TRACKS; tr++) {
         for (let st = 0; st < VYTHI_STEPS; st++) {
-            const x = marginX + st * stepW + 2;
+            const x = marginX + st * stepW + 1;
             const y = marginY + tr * trackH + 2;
-            const cellW = stepW - 4;
+            const cellW = stepW - 2;
             const cellH = trackH - 4;
-            const on = vythi.grid[tr][st];
+            const cell = vythi.grid[tr][st];
             const active = vythi.step === st;
-            const hue = [0, 200, 60][tr] + (active ? 0 : 0);
-            const sat = on ? 70 : 12;
-            const light = on ? (active ? 72 : 55) : (active ? 25 : 12);
-            ctx.fillStyle = `hsl(${hue},${sat}%,${light}%)`;
-            ctx.fillRect(x, y, cellW, cellH);
-            ctx.strokeStyle = active ? '#FFFFFF' : 'rgba(255,255,255,0.08)';
+            const hue = [0, 200, 60][tr];
+
+            if (!cell) {
+                ctx.fillStyle = active ? `hsl(${hue},30%,24%)` : 'hsl(0,0%,10%)';
+                ctx.fillRect(x, y, cellW, cellH);
+            } else {
+                // Pitch level 0 = filled bottom, 3 = filled whole cell.
+                const fillTop = tr === 0 ? 0 : (3 - cell.pitch) * cellH / 4;
+                // Base cell tint
+                const baseLight = active ? 32 : 22;
+                ctx.fillStyle = `hsl(${hue},40%,${baseLight}%)`;
+                ctx.fillRect(x, y, cellW, cellH);
+                // Pitch bar
+                const sat = cell.accent ? 90 : 70;
+                const light = active ? 72 : 58;
+                ctx.fillStyle = `hsl(${hue},${sat}%,${light}%)`;
+                ctx.fillRect(x, y + fillTop, cellW, cellH - fillTop);
+                // Accent ring
+                if (cell.accent) {
+                    ctx.strokeStyle = '#FFE899';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
+                }
+            }
+            ctx.strokeStyle = active ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.06)';
             ctx.lineWidth = active ? 2 : 1;
             ctx.strokeRect(x, y, cellW, cellH);
-            if (on) {
-                // inner glow pixel
-                ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                ctx.fillRect(x + cellW * 0.4, y + cellH * 0.4, cellW * 0.2, cellH * 0.2);
-            }
         }
     }
 
-    // Step indicator (bottom)
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.fillRect(marginX + vythi.step * stepW, marginY + gridH + 6, stepW - 4, 3);
+    // Current step indicator bar (below grid)
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(marginX + vythi.step * stepW + 1, marginY + gridH + 6, stepW - 2, 3);
 
-    // Progress
+    // Progress + count (bottom-right)
     const remain = Math.max(0, 1 - vythi.t / VYTHI_DURATION_TICKS);
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '12px monospace';
+    ctx.font = '11px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`${Math.ceil(remain * 75)}s · ${vythi.uniqueToggles} celle`, w - 16, 54);
+    ctx.fillText(`${Math.ceil(remain * 90)}s · ${vythi.uniqueToggles} attivazioni`, w - 16, h - 10);
 }
 
 export const MiniGames = {

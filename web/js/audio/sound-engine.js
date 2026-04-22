@@ -2115,6 +2115,10 @@ export const SoundEngine = {
     /** Expose the AudioContext + master bus so minigame synths share them. */
     getAudioContext() { ensureCtx(); return ctx; },
     getMasterBus()    { ensureCtx(); return master; },
+    /** Reverb send bus — connect a gain into this to feed the shared
+     *  convolution reverb. Use sparingly (0.15–0.5 send gain) to keep the
+     *  mix clear. Returns null if audio graph is not ready. */
+    getReverbBus()    { ensureCtx(); return revBus; },
     /** Per-user toggle for the stage ambient bed, persisted separately from
      *  the SFX master. When disabled, stopAmbient is called and startAmbient
      *  becomes a no-op until re-enabled. */

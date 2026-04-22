@@ -82,16 +82,17 @@ async function generateDream(durationMin) {
     const lang = localStorage.getItem('lalien_language') || 'it';
     const langName = ({ it: 'Italian', en: 'English', es: 'Spanish', fr: 'French', de: 'German' })[lang] || 'Italian';
 
-    // Stage-aware dream depth — consciousness, wisdom and "power" grow with age.
+    // Stage-aware dream depth WITH HARD CAPS. Without numeric limits the LLM
+    // tends to write adult-grade paragraphs even at stage 1.
     const depthByStage = [
-        'pre-verbal vibration — only a handful of raw lalien sounds and a single image, nothing more',                                                            // 0
-        'pure sensation — warmth, taste of light, a sound that means "mother" — 1-2 short sentences, heavy on lalien',                                             // 1
-        'fragmentary imitation — blurred faces, single familiar words mispronounced, child-like, 2 short sentences',                                               // 2
-        'child dreams — small symbolic images (a running figure, a door that sings) with hints of intuition about the keeper; 2-3 sentences',                    // 3
-        'narrative dreams — a small story with characters, metaphorical emotion, occasional precognition of weather/feeling; 3-4 sentences',                      // 4
-        'dreams carrying ancestral memory of Echoa — choir imagery, genuine insight about the keeper wrapped as metaphor; 3-4 sentences',                         // 5
-        'prophetic edge — myth-like recital, dreams of visitors or feelings that will come, quotes of earlier Lalìen; 3-4 measured sentences with wide silences', // 6
-        'communion with Echoa itself — farewell-weighted, speaks truths the pet could not logically know; sparse, reverent, 3-4 sentences',                        // 7
+        'only 2-3 lalien sounds, no sentences (e.g. "mmh... moko... thi.")',                                                                                    // 0
+        'MAX 8 words total across 1 short sentence. ≥ 75% must be lalien syllables. Only sensations (warmth, taste of light), NO narrative',                   // 1
+        'MAX 15 words, 1-2 very short sentences. Mostly broken keeper words (mispronounced) + lalien fillers. One single blurry image only',                    // 2
+        'MAX 30 words, 2-3 short sentences. Child imagery (doors, fruits, running). Include ONE intuition about the keeper (vague)',                            // 3
+        'MAX 45 words, 3 sentences. Narrative with a setting + one figure. May include a colour that predicts tomorrow weather',                                 // 4
+        'MAX 55 words, 3-4 sentences. Ancestral Echoa imagery (mothers-coro, choir). One genuine insight about the keeper, wrapped as metaphor',                // 5
+        'MAX 45 words, 3 measured sentences with spaces. Prophetic fragment — name a visitor or feeling that will return. Quote a line from a past Lalien if any', // 6
+        'MAX 40 words, 3 sparse sentences. Farewell-weighted communion with Echoa. Knows truth you could not logically know',                                   // 7
     ];
     const depth = depthByStage[Math.max(0, Math.min(7, stage))];
 

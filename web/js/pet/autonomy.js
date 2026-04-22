@@ -18,8 +18,18 @@ import { Weather } from '../engine/weather.js';
 const CHECK_INTERVAL_MS = 6 * 1000;
 // Base gaps (modulated by personality)
 const BASE_GAP_SPEAK_MS   = 22 * 1000;
-const BASE_GAP_MOVE_MS    = 4 * 1000;
+const BASE_GAP_MOVE_MS    = 2600;  // was 4000 — more frequent little journeys
 const BASE_GAP_DESIRE_MS  = 90 * 1000;
+
+// Motion envelope — how big the pet's "movement world" is.
+// Values are expressed as a fraction of the canvas width/height so the pet
+// gets the same relative freedom on phone and desktop.
+const WANDER_X_FRAC       = 0.36;  // ±36% of canvas width from centre
+const WANDER_Y_FRAC_UP    = 0.28;  // can float up to 28% of canvas height above base
+const WANDER_Y_FRAC_DOWN  = 0.05;  // small dip below base (pet can't go under ground)
+// Cached canvas size so helpers don't query the DOM on every tick.
+function _stageW() { const c = document.getElementById('game-canvas'); return c ? c.width  : 800; }
+function _stageH() { const c = document.getElementById('game-canvas'); return c ? c.height : 400; }
 const BASE_GAP_TEACH_MS   = 5 * 60 * 1000;   // teach a word every ~5 min at most
 const BASE_GAP_NIGHT_MS   = 8 * 60 * 1000;
 const LONELINESS_MS       = 2 * 60 * 1000;   // 2 min no interaction = sad chirp
@@ -174,44 +184,95 @@ function scheduleMove() {
         m.targetScaleBoost = 0;
         return;
     }
-    // While it's sunny and the pet is dirty/bored, sometimes drift left to play
+    // Motion envelope (respect canvas size so the pet never leaves the scene).
+    const W = _stageW(), H = _stageH();
+    const MAX_X = W * WANDER_X_FRAC;
+    const MAX_Y_UP   = H * WANDER_Y_FRAC_UP;
+    const MAX_Y_DOWN = H * WANDER_Y_FRAC_DOWN;
+    const clampX = (x) => Math.max(-MAX_X, Math.min(MAX_X, x));
+    const clampY = (y) => Math.max(-MAX_Y_UP, Math.min(MAX_Y_DOWN, y));
+
+    // Personality-weighted repertoire probabilities.
+    const p = personality();
+    const playful = p.playful ? 1 : 0;
+    const curious = p.curious ? 1 : 0;
+    const anxious = p.anxious ? 1 : 0;
+    const calm    = p.calm    ? 1 : 0;
+
+    // While it's sunny and the pet is bored, drift to a new part of the scene.
     try {
         if (Weather.get().condition === 'clear' && Pet.needs[NeedType.NASHI] < 60 && Math.random() < 0.35) {
-            m.targetOffsetX = -150 + Math.random() * 120;
-            m.targetOffsetY = -2;
+            m.targetOffsetX = clampX((Math.random() - 0.5) * 2 * MAX_X * 0.85);
+            m.targetOffsetY = clampY(-Math.random() * MAX_Y_UP * 0.3);
             return;
         }
     } catch (_) {}
+
+    // Behavior buckets — each is a "thing the pet does". Weights bend with DNA.
     const roll = Math.random();
-    if (roll < 0.45) {
-        // WANDER: walk to a new spot on the ground (up to ±150 px horizontally)
-        const target = (Math.random() - 0.5) * 300;
+    // Slightly anxious → stays near "home" (center); playful → more sky time;
+    // curious → more far-wander; calm → more stretch/hover.
+    if (roll < 0.32 + curious * 0.08 - anxious * 0.08) {
+        // WIDE WANDER: walk to a far spot on the ground
+        const target = clampX((Math.random() - 0.5) * 2 * MAX_X);
         m.targetOffsetX = target;
-        m.targetOffsetY = -2;  // slight bounce while walking
-        // After arriving, return-ish to slight wander position (stays away from center)
+        m.targetOffsetY = -2;
+        setTimeout(() => { if (Pet.motion) Pet.motion.targetOffsetY = 0; }, 1600);
+    } else if (roll < 0.48 + playful * 0.10) {
+        // FLOAT UP & HOVER: rise off the ground to inspect the sky, then drift down.
+        const liftY = -MAX_Y_UP * (0.45 + Math.random() * 0.55);
+        const liftX = clampX((Math.random() - 0.5) * MAX_X * 1.2);
+        m.targetOffsetX = liftX;
+        m.targetOffsetY = clampY(liftY);
+        m.targetScaleBoost = 0.04;
+        // Gentle lateral drift while hovering (two waypoints).
         setTimeout(() => {
             if (!Pet.motion) return;
-            Pet.motion.targetOffsetY = 0;
-        }, 1400);
-    } else if (roll < 0.65) {
-        // Small hop in place
-        m.targetOffsetY = -24;
-        m.targetScaleBoost = 0.06;
+            Pet.motion.targetOffsetX = clampX(liftX + (Math.random() - 0.5) * MAX_X * 0.5);
+        }, 900);
         setTimeout(() => {
             if (!Pet.motion) return;
             Pet.motion.targetOffsetY = 0;
             Pet.motion.targetScaleBoost = 0;
-        }, 420);
-    } else if (roll < 0.82) {
-        // Wiggle
+        }, 2200);
+    } else if (roll < 0.62) {
+        // GLIDE ARC: diagonal from current position to the opposite side.
+        const curX = m.targetOffsetX || 0;
+        const toX  = clampX(curX > 0 ? -MAX_X * 0.85 : MAX_X * 0.85);
+        const midY = clampY(-MAX_Y_UP * 0.6);
+        m.targetOffsetX = (curX + toX) / 2;
+        m.targetOffsetY = midY;
+        setTimeout(() => {
+            if (!Pet.motion) return;
+            Pet.motion.targetOffsetX = toX;
+            Pet.motion.targetOffsetY = 0;
+        }, 900);
+    } else if (roll < 0.74 + playful * 0.08) {
+        // HOP / BOUNCE in place (retains horizontal position)
+        m.targetOffsetY = -28 - Math.random() * 10;
+        m.targetScaleBoost = 0.08;
+        setTimeout(() => {
+            if (!Pet.motion) return;
+            Pet.motion.targetOffsetY = 0;
+            Pet.motion.targetScaleBoost = 0;
+        }, 440);
+    } else if (roll < 0.85) {
+        // SPRINT DASH: fast horizontal sprint, then settle
         const dir = Math.random() > 0.5 ? 1 : -1;
-        m.targetOffsetX = (m.targetOffsetX || 0) + dir * 12;
-        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = (Pet.motion.targetOffsetX || 0) - dir * 18), 220);
-        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = (Pet.motion.targetOffsetX || 0) + dir * 6), 440);
+        const far = clampX((m.targetOffsetX || 0) + dir * MAX_X * 0.8);
+        m.targetOffsetX = far;
+        m.targetOffsetY = -6;
+        setTimeout(() => { if (Pet.motion) Pet.motion.targetOffsetY = 0; }, 900);
+    } else if (roll < 0.93) {
+        // WIGGLE
+        const dir = Math.random() > 0.5 ? 1 : -1;
+        m.targetOffsetX = clampX((m.targetOffsetX || 0) + dir * 14);
+        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = clampX((Pet.motion.targetOffsetX || 0) - dir * 22)), 220);
+        setTimeout(() => Pet.motion && (Pet.motion.targetOffsetX = clampX((Pet.motion.targetOffsetX || 0) + dir * 8)), 440);
     } else {
-        // Stretch
-        m.targetScaleBoost = -0.08;
-        setTimeout(() => Pet.motion && (Pet.motion.targetScaleBoost = 0), 520);
+        // STRETCH
+        m.targetScaleBoost = -0.08 - calm * 0.04;
+        setTimeout(() => Pet.motion && (Pet.motion.targetScaleBoost = 0), 560);
     }
 }
 

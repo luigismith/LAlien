@@ -9,10 +9,16 @@ import { AlienLexicon } from '../i18n/alien-lexicon.js';
 
 const MAX_MEMORIES = 20;
 const DIARY_INTERVAL_CONVERSATIONS = 5; // generate diary every N conversations
+const DIARY_MAX_PER_DAY = 4;             // cap: 3–5 ok, we pick 4 entries/day max
 
 let _memories = [];
 let _diary = [];
 let _conversationsSinceDiary = 0;
+
+// Count how many diary entries already exist for a given pet-age-day.
+function _entriesForDay(day) {
+    return _diary.filter(e => (e && e.day === day)).length;
+}
 
 // Stop words for vocabulary extraction
 const STOP_WORDS = new Set([
@@ -88,12 +94,29 @@ export const DiaryGenerator = {
     async generateDiary() {
         if (!LLMClient.isAvailable()) return;
 
+        // Daily cap: the diary was producing too many near-identical posts
+        // per day. We allow at most DIARY_MAX_PER_DAY, and when the cap is
+        // nearly reached we instruct the model to GROUP remaining concepts
+        // instead of writing a new short entry.
+        const today = Pet.getAgeDays();
+        const todayCount = _entriesForDay(today);
+        if (todayCount >= DIARY_MAX_PER_DAY) {
+            console.log('[DIARY] Daily cap reached (' + DIARY_MAX_PER_DAY + '), skipping.');
+            return;
+        }
+        // When we're on the last allowed slot of the day, ask the model to
+        // fold together multiple events/concepts instead of picking just one.
+        const groupingHint = (todayCount >= DIARY_MAX_PER_DAY - 1)
+            ? 'This is your LAST diary entry for today. Do not write a thin, single-topic note: WEAVE together the 2-3 most important threads from [TODAY] and [RECENT_MEMORY] into ONE coherent entry (still 3-5 sentences, still from one topic-seed as an anchor, but let the other threads surface briefly).'
+            : '';
+
         try {
             const events = this.getMemorySummary(5);
             // Pass the last 3 entries so the prompt can explicitly ask the
             // LLM to avoid repeating themes, opening words, or imagery.
             const recent = _diary.slice(-3);
-            const prompt = SystemPrompt.buildDiaryPrompt(events, recent);
+            let prompt = SystemPrompt.buildDiaryPrompt(events, recent);
+            if (groupingHint) prompt += '\n[GROUPING_HINT]\n' + groupingHint + '\n';
             const entry = await LLMClient.generateDiary(prompt);
 
             if (entry) {
