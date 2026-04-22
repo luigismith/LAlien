@@ -188,22 +188,24 @@ function drawBackground(ctx, w, h, tick, pet) {
         // back down to horizon (sunset). Visible also at dawn/dusk so the
         // keeper sees it low on the horizon in late afternoon / early evening.
         //
-        // Celestial occlusion: during precipitation (rain/snow/thunder) or
-        // heavy overcast the solar disc is fully hidden — it would be
-        // incoherent to see "beautiful sun + rain pouring" in the same scene.
-        // Mist and moderate cloud cover dim the disc proportionally.
-        const noCelestial = (wCond.condition === 'rain' || wCond.condition === 'snow' ||
-                             wCond.condition === 'thunder' || (wCond.clouds || 0) >= 85);
+        // Celestial veiling: the sun/moon are ALWAYS visible (even through
+        // rain or heavy overcast), but their luminosity drops so the disc
+        // reads as a pale presence behind clouds rather than a bright beacon.
+        // Only during active thunder do we push it to near-invisible.
         const celestialDim = (() => {
-            if (noCelestial) return 0;
-            if (wCond.condition === 'mist') return 0.22;
-            if (wCond.condition === 'clouds') return Math.max(0.18, 1 - (wCond.clouds || 60) / 110);
-            // Light clouds over an otherwise clear sky
+            if (wCond.condition === 'thunder') return 0.10;
+            if (wCond.condition === 'rain')    return 0.22;
+            if (wCond.condition === 'snow')    return 0.28;
+            if (wCond.condition === 'mist')    return 0.22;
             const c = wCond.clouds || 0;
-            if (c > 40) return Math.max(0.35, 1 - c / 140);
+            if (wCond.condition === 'clouds')  return Math.max(0.20, 1 - c / 130);
+            // Clear sky with some clouds: dim proportionally to coverage.
+            if (c > 40) return Math.max(0.40, 1 - c / 150);
             return 1;
         })();
-        if (phase !== 'night' && !noCelestial) {
+        // The disc itself is always drawn during the day; the dim factor does
+        // the work of "seeing it through the clouds".
+        if (phase !== 'night') {
             const sun = Environment.getSunTimes(now);
             let arc = 0.5;
             if (sun.sunrise && sun.sunset) {
@@ -259,9 +261,9 @@ function drawBackground(ctx, w, h, tick, pet) {
         }
 
         // --- Moon at night (new) ---
-        // Same occlusion as the sun: rain/snow/thunder and heavy overcast hide
-        // the moon entirely; mist and moderate clouds dim it.
-        if (phase === 'night' && !noCelestial) {
+        // Same veiling as the sun: the moon stays visible through clouds/rain,
+        // just dimmer, so the sky never feels disc-less.
+        if (phase === 'night') {
             const nowMs = now.getTime();
             // Monthly phase (synodic month ≈ 29.53 days)
             const synodic = 29.53 * 86400 * 1000;
@@ -316,12 +318,22 @@ function drawBackground(ctx, w, h, tick, pet) {
     }
 
     // Dawn / dusk horizon blaze — vivid orange-pink strip where the sun is.
-    // Hidden during heavy weather (the sun is behind clouds, no blaze shows).
+    // Dimmed (not hidden) during heavy weather so the glow is still felt
+    // behind the clouds, coherent with the always-visible sun disc.
     const blazeWCond = (typeof Weather !== 'undefined') ? Weather.get() : { condition: 'clear', clouds: 0 };
-    const blazeHidden = (blazeWCond.condition === 'rain' || blazeWCond.condition === 'snow' ||
-                         blazeWCond.condition === 'thunder' || (blazeWCond.clouds || 0) >= 85);
-    if ((phase === 'dawn' || phase === 'dusk') && !blazeHidden) {
+    const blazeDim = (() => {
+        if (blazeWCond.condition === 'thunder') return 0.12;
+        if (blazeWCond.condition === 'rain')    return 0.28;
+        if (blazeWCond.condition === 'snow')    return 0.32;
+        if (blazeWCond.condition === 'mist')    return 0.35;
+        const c = blazeWCond.clouds || 0;
+        if (blazeWCond.condition === 'clouds')  return Math.max(0.25, 1 - c / 130);
+        if (c > 40) return Math.max(0.45, 1 - c / 150);
+        return 1;
+    })();
+    if ((phase === 'dawn' || phase === 'dusk') && blazeDim > 0.05) {
         ctx.save();
+        ctx.globalAlpha = blazeDim;
         const sunX = phase === 'dawn' ? w * 0.15 : w * 0.85;
         const blaze = ctx.createRadialGradient(sunX, h * 0.72, 8, sunX, h * 0.72, w * 0.55);
         blaze.addColorStop(0,   'rgba(255,200,120,0.75)');
@@ -331,7 +343,7 @@ function drawBackground(ctx, w, h, tick, pet) {
         ctx.fillStyle = blaze;
         ctx.fillRect(0, 0, w, h);
         // A faint sun disc
-        ctx.globalAlpha = 0.65;
+        ctx.globalAlpha = 0.65 * blazeDim;
         const sunG = ctx.createRadialGradient(sunX, h * 0.72, 2, sunX, h * 0.72, 28);
         sunG.addColorStop(0, '#FFE8A8');
         sunG.addColorStop(1, 'transparent');

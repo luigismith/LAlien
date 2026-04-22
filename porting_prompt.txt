@@ -1,9 +1,0 @@
-Ciao, devo fare il porting nativo Android + iOS di una PWA. Il progetto si chiama Lalìen Companion, repo GitHub: luigismith/LAlien, cartella webapp: web/. È un Tamagotchi permadeath con LLM (OpenAI/Anthropic), canvas 2D pixel-art, Web Audio procedurale, IndexedDB, Web Speech API, service worker, geolocation + OpenWeatherMap. Deployata su lalien.comesspa.it.
-
-Stack attuale: vanilla JS ES modules, nessun bundler, 5 lingue i18n, DNA-seeded personality, 5 minigiochi musicali (harp/theremin/drone/chord-organ/step-sequencer), shelter/weather/day-night/dream system.
-
-Approccio scelto: Capacitor per wrappare la PWA esistente. Voglio iniziare da Android (APK dev firmato per validare audio/canvas/LLM/TTS in WebView), poi iOS.
-
-Aiutami a: (1) installare Capacitor nel repo senza distruggere la PWA, (2) configurare capacitor.config.ts, (3) cap add android, (4) build di prova + primo run su emulatore, (5) poi cap add ios e Xcode setup.
-
-Fix noti che richiederanno bridging nativo: notifiche push (oggi solo SW-triggered), haptics (su iOS navigator.vibrate ignorato), TTS (sostituire Web Speech con TTS nativa), background timers per il decay dei needs. Per ora basta che il wrapping non li rompa; bridge veri dopo.
